@@ -1,0 +1,78 @@
+"use client";
+
+import { useEffect, useRef, ComponentType } from "react";
+import { useQuery } from "convex/react";
+import { api } from "../convex/_generated/api";
+import { GameProvider, useGame } from "./GameContext";
+import EntryScreen from "./components/EntryScreen";
+import JoinScreen from "./components/JoinScreen";
+import WaitScreen from "./components/WaitScreen";
+import FacSetupScreen from "./components/FacSetupScreen";
+import FacLiveScreen from "./components/FacLiveScreen";
+import CardRevealScreen from "./components/CardRevealScreen";
+import BuildScreen from "./components/BuildScreen";
+import UploadScreen from "./components/UploadScreen";
+import CityMapScreen from "./components/CityMapScreen";
+import RevealScreen from "./components/RevealScreen";
+import DebriefScreen from "./components/DebriefScreen";
+import CompleteScreen from "./components/CompleteScreen";
+
+const SCREENS: Record<string, ComponentType> = {
+  "s-entry": EntryScreen,
+  "s-join": JoinScreen,
+  "s-wait": WaitScreen,
+  "s-fac-setup": FacSetupScreen,
+  "s-fac-live": FacLiveScreen,
+  "s-card": CardRevealScreen,
+  "s-build": BuildScreen,
+  "s-upload": UploadScreen,
+  "s-city": CityMapScreen,
+  "s-reveal": RevealScreen,
+  "s-debrief": DebriefScreen,
+  "s-complete": CompleteScreen,
+};
+
+function GameShell() {
+  const { screen, sessionCode, role, goTo } = useGame();
+  const session = useQuery(
+    api.game.getSession,
+    sessionCode ? { code: sessionCode } : "skip"
+  );
+  const prevPhaseRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!session || session.phase === prevPhaseRef.current) return;
+    prevPhaseRef.current = session.phase;
+
+    if (session.phase === "waiting") return;
+
+    if (role === "facilitator") {
+      goTo("s-fac-live");
+      return;
+    }
+
+    const phaseToScreen: Record<string, string> = {
+      card_reveal: "s-card",
+      building: "s-build",
+      uploading: "s-upload",
+      city_map: "s-city",
+      constraint_reveal: "s-reveal",
+      debrief: "s-debrief",
+      complete: "s-complete",
+    };
+    if (phaseToScreen[session.phase]) {
+      goTo(phaseToScreen[session.phase]);
+    }
+  }, [session?.phase, role, goTo]);
+
+  const Screen = SCREENS[screen] || EntryScreen;
+  return <Screen />;
+}
+
+export default function Home() {
+  return (
+    <GameProvider>
+      <GameShell />
+    </GameProvider>
+  );
+}
