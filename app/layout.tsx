@@ -1,5 +1,5 @@
 import "./globals.css";
-import ConvexClientProvider from "./providers";
+import { ConvexClientProvider } from "./providers";
 import { Toaster } from "sonner";
 import type { Metadata } from "next";
 
