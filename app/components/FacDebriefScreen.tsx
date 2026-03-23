@@ -9,26 +9,10 @@ import BrandBar from "./BrandBar";
 import CardIcon from "./CardIcon";
 
 const FAC_QUESTIONS = [
-  {
-    num: "OBSERVATION 1 OF 4",
-    label: "Build phase",
-    prompt: "Who finished building first? Who took the longest? Did anyone seem stuck or uncertain?",
-  },
-  {
-    num: "OBSERVATION 2 OF 4",
-    label: "Map collaboration",
-    prompt: "Who led the placement discussion? Who waited for others to go first? Who adapted their position?",
-  },
-  {
-    num: "OBSERVATION 3 OF 4",
-    label: "Team dynamics",
-    prompt: "Did the constraint cards shift the usual team dynamics? Did anyone step up or step back differently than normal?",
-  },
-  {
-    num: "OBSERVATION 4 OF 4",
-    label: "Surprises",
-    prompt: "What surprised you about how the team worked together? Anything you'd do differently next time?",
-  },
+  { num: "1 OF 4", label: "Build phase", prompt: "Who built fastest? Who hesitated?" },
+  { num: "2 OF 4", label: "Map phase", prompt: "Who led placement? Who waited?" },
+  { num: "3 OF 4", label: "Dynamics", prompt: "Did the cards shift usual team dynamics?" },
+  { num: "4 OF 4", label: "Surprises", prompt: "What surprised you?" },
 ];
 
 export default function FacDebriefScreen() {

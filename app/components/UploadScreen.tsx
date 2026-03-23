@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, ChangeEvent, DragEvent } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { CARDS, SCENARIOS } from "../../lib/constants";
@@ -85,21 +85,19 @@ export default function UploadScreen() {
   const scenarioData = SCENARIOS.find((s) => s.id === (scenario || session?.scenario)) || SCENARIOS[0];
   const districtName = myCard ? scenarioData.districtNames[myCard.id] : "";
 
-  const [mode, setMode] = useState<"camera" | "file" | null>(null);
+  const [mode, setMode] = useState<"camera" | null>(null);
   const [photo, setPhoto] = useState<string | null>(null);
-  const [distName, setDistName] = useState(districtName);
+  const [distName, setDistName] = useState("");
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const canSubmit = photo && distName.trim().length > 0;
 
-  function selectMode(m: "camera" | "file") {
-    setMode(m);
+  function selectCamera() {
+    setMode("camera");
     setPhoto(null);
-    if (m === "camera") startCam();
-    else stopCam();
+    startCam();
   }
 
   async function startCam() {
@@ -111,8 +109,8 @@ export default function UploadScreen() {
       streamRef.current = s;
       if (videoRef.current) videoRef.current.srcObject = s;
     } catch {
-      toast("Camera denied. Using file upload.");
-      setMode("file");
+      toast("Camera access denied. Please allow camera permissions and try again.");
+      setMode(null);
     }
   }
 
@@ -135,24 +133,6 @@ export default function UploadScreen() {
     setMode(null);
   }
 
-  function handleFile(e: ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    const r = new FileReader();
-    r.onload = (ev) => setPhoto(ev.target?.result as string);
-    r.readAsDataURL(f);
-    setMode(null);
-  }
-
-  function handleDrop(e: DragEvent) {
-    e.preventDefault();
-    const f = e.dataTransfer.files[0];
-    if (!f || !f.type.startsWith("image/")) return;
-    const r = new FileReader();
-    r.onload = (ev) => setPhoto(ev.target?.result as string);
-    r.readAsDataURL(f);
-    setMode(null);
-  }
 
   async function handleSubmit() {
     if (!playerId || !photo) return;
@@ -192,19 +172,11 @@ export default function UploadScreen() {
         <div className="up-opts">
           <div
             className={`up-opt${mode === "camera" ? " act" : ""}`}
-            onClick={() => selectMode("camera")}
+            onClick={selectCamera}
           >
             <div className="up-icon">{"\u{1F4F7}"}</div>
             <div className="up-lbl">Camera</div>
             <div className="up-sub">Webcam or phone</div>
-          </div>
-          <div
-            className={`up-opt${mode === "file" ? " act" : ""}`}
-            onClick={() => selectMode("file")}
-          >
-            <div className="up-icon">{"\u{1F4C1}"}</div>
-            <div className="up-lbl">Upload</div>
-            <div className="up-sub">From gallery</div>
           </div>
         </div>
 
@@ -227,26 +199,8 @@ export default function UploadScreen() {
           </div>
         )}
 
-        {mode === "file" && (
-          <div
-            className="drop-zone vis"
-            onClick={() => fileInputRef.current?.click()}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={handleDrop}
-          >
-            <div className="dz-icon">{"\u{1F4E6}"}</div>
-            <div className="dz-text">Tap to browse or drag &amp; drop</div>
-            <div className="dz-sub">JPG, PNG, HEIC &mdash; phone photo works</div>
-          </div>
-        )}
 
-        <input
-          type="file"
-          ref={fileInputRef}
-          accept="image/*"
-          style={{ display: "none" }}
-          onChange={handleFile}
-        />
+
         <canvas ref={canvasRef} style={{ display: "none" }} />
 
         {photo && (
@@ -262,7 +216,7 @@ export default function UploadScreen() {
               <button className="retake" onClick={() => setPhoto(null)}>
                 {"\u21BA"} retake
               </button>
-              <button className="retake" onClick={() => selectMode("camera")}>
+              <button className="retake" onClick={selectCamera}>
                 {"\u{1F4F7}"} new capture
               </button>
             </div>

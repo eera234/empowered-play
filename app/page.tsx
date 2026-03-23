@@ -51,6 +51,8 @@ function GameShell() {
     if (role === "facilitator") {
       if (session.phase === "debrief") {
         goTo("s-fac-debrief");
+      } else if (session.phase === "constraint_reveal") {
+        goTo("s-reveal");
       } else {
         goTo("s-fac-live");
       }

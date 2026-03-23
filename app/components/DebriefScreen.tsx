@@ -96,12 +96,8 @@ export default function DebriefScreen() {
           </div>
           <div className="deb-lbl">BEFORE THE REVEAL</div>
           <div className="deb-text">
-            The city is built. Every district is placed. But you still don&apos;t know
-            what constraints shaped each architect&apos;s decisions.
-            <br /><br />
-            Before we reveal the cards, take a moment to reflect on what you observed.{" "}
-            <strong>There are no wrong answers</strong> &mdash; this is about what you noticed,
-            not what you know.
+            The city is built. Before we reveal the cards, reflect on what you observed.{" "}
+            <strong>There are no wrong answers.</strong>
           </div>
         </div>
 
@@ -157,7 +153,7 @@ export default function DebriefScreen() {
                 <textarea
                   className="q-ta"
                   rows={3}
-                  placeholder="Write freely \u2014 this is anonymous\u2026"
+                  placeholder="Write freely, this is anonymous..."
                   value={freeText}
                   onChange={(e) => setFreeText(e.target.value)}
                 />

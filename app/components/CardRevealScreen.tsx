@@ -39,7 +39,7 @@ export default function CardRevealScreen() {
       </BrandBar>
       <div className="card-inner">
         <div className="brief-box">
-          <div className="brief-lbl">MISSION BRIEFING &mdash; {scenario.title.toUpperCase()}</div>
+          <div className="brief-lbl">MISSION BRIEFING {scenario.title.toUpperCase()}</div>
           <div className="brief-txt">
             {scenario.briefing}{" "}
             <strong>Do not share your constraint with anyone until the reveal phase.</strong>

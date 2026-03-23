@@ -21,7 +21,7 @@ export const SCENARIOS: Scenario[] = [
     icon: "\u{1F3D9}\uFE0F",
     color: "#4FC3F7",
     briefing:
-      "The old city is gone \u2014 swallowed by rising waters. Your team are the architects of what comes next. Each of you builds one district of the new city. But you each carry a sealed constraint that shapes how you build. Nobody knows anyone else\u2019s rule.",
+      "The old city is gone. Swallowed by rising waters. Your team are the architects of what comes next. Each of you builds one district of the new city. But you each carry a sealed constraint that shapes how you build. Nobody knows anyone else's rule.",
     mapTheme: "water",
     districtNames: {
       0: "The Lighthouse",
@@ -81,7 +81,7 @@ export const SCENARIOS: Scenario[] = [
     icon: "\u{1F333}",
     color: "#66BB6A",
     briefing:
-      "The forest offered shelter when everything else fell. Now your team builds a permanent settlement woven into the canopy and roots. Each architect shapes one district under a sealed constraint. The forest connects everything \u2014 if you let it.",
+      "The forest offered shelter when everything else fell. Now your team builds a permanent settlement woven into the canopy and roots. Each architect shapes one district under a sealed constraint. The forest connects everything. If you let it.",
     mapTheme: "forest",
     districtNames: {
       0: "The Canopy",
