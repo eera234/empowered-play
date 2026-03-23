@@ -88,18 +88,20 @@ export default function DebriefScreen() {
         <PhaseBar current={4} />
       </BrandBar>
       <div className="deb-inner">
-        <div className="deb-intro">
-          <div className="deb-studs">
-            <div className="deb-stud" />
-            <div className="deb-stud" />
-            <div className="deb-stud" />
+        {!submitted && (
+          <div className="deb-intro">
+            <div className="deb-studs">
+              <div className="deb-stud" />
+              <div className="deb-stud" />
+              <div className="deb-stud" />
+            </div>
+            <div className="deb-lbl">BEFORE THE REVEAL</div>
+            <div className="deb-text">
+              The city is built. Before we reveal the cards, reflect on what you observed.{" "}
+              <strong>There are no wrong answers.</strong>
+            </div>
           </div>
-          <div className="deb-lbl">BEFORE THE REVEAL</div>
-          <div className="deb-text">
-            The city is built. Before we reveal the cards, reflect on what you observed.{" "}
-            <strong>There are no wrong answers.</strong>
-          </div>
-        </div>
+        )}
 
         {!submitted ? (
           <>

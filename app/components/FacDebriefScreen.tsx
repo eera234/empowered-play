@@ -9,10 +9,26 @@ import BrandBar from "./BrandBar";
 import CardIcon from "./CardIcon";
 
 const FAC_QUESTIONS = [
-  { num: "1 OF 4", label: "Build phase", prompt: "Who built fastest? Who hesitated?" },
-  { num: "2 OF 4", label: "Map phase", prompt: "Who led placement? Who waited?" },
-  { num: "3 OF 4", label: "Dynamics", prompt: "Did the cards shift usual team dynamics?" },
-  { num: "4 OF 4", label: "Surprises", prompt: "What surprised you?" },
+  {
+    num: "1 OF 4",
+    prompt: "Who built fastest? Who hesitated?",
+    options: ["Everyone was similar", "Clear fast finishers", "Some struggled", "Big variation in pace"],
+  },
+  {
+    num: "2 OF 4",
+    prompt: "Who led placement? Who waited?",
+    options: ["Shared equally", "One person led", "A few took charge", "Most waited to be told"],
+  },
+  {
+    num: "3 OF 4",
+    prompt: "Did the cards shift usual team dynamics?",
+    options: ["Yes, noticeably", "Somewhat", "Not really", "Hard to tell"],
+  },
+  {
+    num: "4 OF 4",
+    prompt: "What surprised you?",
+    options: ["Someone stepped up unexpectedly", "Usual leaders held back", "Team collaborated well", "Communication was harder than expected"],
+  },
 ];
 
 export default function FacDebriefScreen() {
@@ -20,6 +36,7 @@ export default function FacDebriefScreen() {
   const players = useQuery(api.game.getPlayers, sessionId ? { sessionId } : "skip");
   const debriefAnswers = useQuery(api.game.getDebriefAnswers, sessionId ? { sessionId } : "skip");
   const advancePhase = useMutation(api.game.advancePhase);
+  const [selections, setSelections] = useState<Record<number, string>>({});
   const [notes, setNotes] = useState<Record<number, string>>({});
 
   const nonFac = (players || []).filter((p) => !p.isFacilitator);
@@ -84,12 +101,24 @@ export default function FacDebriefScreen() {
               <div key={i} className="q-block">
                 <div className="q-num">{q.num}</div>
                 <div className="q-text">{q.prompt}</div>
+                <div className="q-opts">
+                  {q.options.map((opt, oi) => (
+                    <div
+                      key={oi}
+                      className={`q-opt${selections[i] === opt ? " sel" : ""}`}
+                      onClick={() => setSelections((prev) => ({ ...prev, [i]: opt }))}
+                    >
+                      {opt}
+                    </div>
+                  ))}
+                </div>
                 <textarea
                   className="q-ta"
-                  rows={3}
-                  placeholder="Your notes..."
+                  rows={2}
+                  placeholder="Additional notes (optional)..."
                   value={notes[i] || ""}
                   onChange={(e) => setNotes((prev) => ({ ...prev, [i]: e.target.value }))}
+                  style={{ marginTop: 8 }}
                 />
               </div>
             ))}

@@ -89,18 +89,18 @@ export default function CompleteScreen() {
             <rect x="34" y="84" width="52" height="14" rx="3" fill="rgba(255,215,0,.2)" stroke="#FFD700" strokeWidth="2" />
             {/* Bottom brick layer */}
             <rect x="30" y="98" width="60" height="14" rx="3" fill="rgba(255,215,0,.15)" stroke="#FFD700" strokeWidth="2" />
-            {/* Studs on top brick */}
-            <circle cx="44" cy="84" r="4.5" fill="rgba(255,215,0,.35)" stroke="#FFD700" strokeWidth="1.5" />
-            <circle cx="56" cy="84" r="4.5" fill="rgba(255,215,0,.35)" stroke="#FFD700" strokeWidth="1.5" />
-            <circle cx="68" cy="84" r="4.5" fill="rgba(255,215,0,.35)" stroke="#FFD700" strokeWidth="1.5" />
-            {/* Studs on bottom brick */}
+            {/* Studs on top brick — centered on base (x=34, w=52, so center=60) */}
+            <circle cx="47" cy="84" r="4.5" fill="rgba(255,215,0,.35)" stroke="#FFD700" strokeWidth="1.5" />
+            <circle cx="60" cy="84" r="4.5" fill="rgba(255,215,0,.35)" stroke="#FFD700" strokeWidth="1.5" />
+            <circle cx="73" cy="84" r="4.5" fill="rgba(255,215,0,.35)" stroke="#FFD700" strokeWidth="1.5" />
+            {/* Studs on bottom brick — centered on base (x=30, w=60, so center=60) */}
             <circle cx="40" cy="98" r="4.5" fill="rgba(255,215,0,.25)" stroke="#FFD700" strokeWidth="1.5" />
-            <circle cx="52" cy="98" r="4.5" fill="rgba(255,215,0,.25)" stroke="#FFD700" strokeWidth="1.5" />
-            <circle cx="64" cy="98" r="4.5" fill="rgba(255,215,0,.25)" stroke="#FFD700" strokeWidth="1.5" />
-            <circle cx="76" cy="98" r="4.5" fill="rgba(255,215,0,.25)" stroke="#FFD700" strokeWidth="1.5" />
-            {/* Studs on top of trophy cup */}
+            <circle cx="53" cy="98" r="4.5" fill="rgba(255,215,0,.25)" stroke="#FFD700" strokeWidth="1.5" />
+            <circle cx="67" cy="98" r="4.5" fill="rgba(255,215,0,.25)" stroke="#FFD700" strokeWidth="1.5" />
+            <circle cx="80" cy="98" r="4.5" fill="rgba(255,215,0,.25)" stroke="#FFD700" strokeWidth="1.5" />
+            {/* Studs on top of trophy cup — centered on cup (x=36, w=48, so center=60) */}
             <circle cx="50" cy="18" r="5" fill="rgba(255,215,0,.35)" stroke="#FFD700" strokeWidth="1.5" />
-            <circle cx="60" cy="16" r="5" fill="rgba(255,215,0,.4)" stroke="#FFD700" strokeWidth="1.5" />
+            <circle cx="60" cy="18" r="5" fill="rgba(255,215,0,.4)" stroke="#FFD700" strokeWidth="1.5" />
             <circle cx="70" cy="18" r="5" fill="rgba(255,215,0,.35)" stroke="#FFD700" strokeWidth="1.5" />
             <defs>
               <radialGradient id="trophyGlow" cx="50%" cy="50%" r="50%">
@@ -117,7 +117,7 @@ export default function CompleteScreen() {
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
           <button className="lb lb-yellow" onClick={() => goTo("s-entry")}>
-            &larr; Play Again
+            PLAY AGAIN
           </button>
         </div>
       </div>

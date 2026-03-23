@@ -169,16 +169,15 @@ export default function UploadScreen() {
           </div>
         </div>
 
-        <div className="up-opts">
-          <div
-            className={`up-opt${mode === "camera" ? " act" : ""}`}
-            onClick={selectCamera}
-          >
-            <div className="up-icon">{"\u{1F4F7}"}</div>
-            <div className="up-lbl">Camera</div>
-            <div className="up-sub">Webcam or phone</div>
-          </div>
-        </div>
+        <button
+          className={`up-opt${mode === "camera" ? " act" : ""}`}
+          onClick={selectCamera}
+          style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "20px 0" }}
+        >
+          <div className="up-icon">{"\u{1F4F7}"}</div>
+          <div className="up-lbl">Camera</div>
+          <div className="up-sub">Webcam or phone</div>
+        </button>
 
         {mode === "camera" && (
           <div className="cam-area vis">
