@@ -16,6 +16,7 @@ import CityMapScreen from "./components/CityMapScreen";
 import RevealScreen from "./components/RevealScreen";
 import DebriefScreen from "./components/DebriefScreen";
 import CompleteScreen from "./components/CompleteScreen";
+import FacDebriefScreen from "./components/FacDebriefScreen";
 
 const SCREENS: Record<string, ComponentType> = {
   "s-entry": EntryScreen,
@@ -23,6 +24,7 @@ const SCREENS: Record<string, ComponentType> = {
   "s-wait": WaitScreen,
   "s-fac-setup": FacSetupScreen,
   "s-fac-live": FacLiveScreen,
+  "s-fac-debrief": FacDebriefScreen,
   "s-card": CardRevealScreen,
   "s-build": BuildScreen,
   "s-upload": UploadScreen,
@@ -47,7 +49,11 @@ function GameShell() {
     if (session.phase === "waiting") return;
 
     if (role === "facilitator") {
-      goTo("s-fac-live");
+      if (session.phase === "debrief") {
+        goTo("s-fac-debrief");
+      } else {
+        goTo("s-fac-live");
+      }
       return;
     }
 
@@ -56,8 +62,8 @@ function GameShell() {
       building: "s-build",
       uploading: "s-upload",
       city_map: "s-city",
-      constraint_reveal: "s-reveal",
       debrief: "s-debrief",
+      constraint_reveal: "s-reveal",
       complete: "s-complete",
     };
     if (phaseToScreen[session.phase]) {

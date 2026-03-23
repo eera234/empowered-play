@@ -4,10 +4,12 @@ import { useState, useEffect, useRef } from "react";
 import { useGame } from "../GameContext";
 import BrandBar from "./BrandBar";
 import PhaseBar from "./PhaseBar";
+import CardIcon from "./CardIcon";
 
 export default function BuildScreen() {
   const { myCard, goTo } = useGame();
-  const [secs, setSecs] = useState(15 * 60);
+  const buildMinutes = myCard?.buildTime ?? 15;
+  const [secs, setSecs] = useState(buildMinutes * 60);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -27,6 +29,10 @@ export default function BuildScreen() {
   const m = Math.floor(secs / 60);
   const s = secs % 60;
   const urgent = secs <= 120;
+  const totalSecs = buildMinutes * 60;
+  const circumference = 2 * Math.PI * 80;
+  const progress = secs / totalSecs;
+  const dashOffset = circumference * (1 - progress);
 
   return (
     <div className="screen active" id="s-build">
@@ -34,34 +40,46 @@ export default function BuildScreen() {
         <PhaseBar current={2} />
       </BrandBar>
       <div className="build-inner">
-        <div className="scen-box">
-          <div className="scen-lbl">THE FLOODED CITY</div>
-          <div className="scen-text">
-            The old city is gone. Use your LEGO pieces to build your district. Your constraint card
-            is your only rule. The city only survives if every district connects.
-          </div>
-        </div>
-
         {myCard && (
           <div className="card-reminder" style={{ borderColor: myCard.color + "66" }}>
-            <div className="cr-icon">{myCard.icon}</div>
+            <div className="cr-icon" style={{ color: myCard.color }}><CardIcon icon={myCard.icon} size={24} /></div>
             <div className="cr-body">
               <div className="cr-title" style={{ color: myCard.color }}>{myCard.title}</div>
-              <div className="cr-rule">{myCard.rule}</div>
+              <div className="cr-rule">{myCard.shapeHint}</div>
             </div>
           </div>
         )}
 
-        <div className={`timer-big${urgent ? " urgent" : ""}`}>
-          {m}:{s < 10 ? "0" : ""}{s}
+        <div className="timer-frame">
+          <div className="timer-studs">
+            <div className="lego-stud-3d" />
+            <div className="lego-stud-3d" />
+            <div className="lego-stud-3d" />
+            <div className="lego-stud-3d" />
+            <div className="lego-stud-3d" />
+          </div>
+          <div className="timer-progress-ring">
+            <svg viewBox="0 0 180 180">
+              <circle className="ring-bg" cx="90" cy="90" r="80" />
+              <circle
+                className={`ring-fg${urgent ? " urgent" : ""}`}
+                cx="90" cy="90" r="80"
+                strokeDasharray={circumference}
+                strokeDashoffset={dashOffset}
+              />
+            </svg>
+            <div className={`timer-value${urgent ? " urgent" : ""}`}>
+              {m}:{s < 10 ? "0" : ""}{s}
+            </div>
+          </div>
+          <div className="timer-sub" style={{ marginTop: 12 }}>BUILD IN ISOLATION &mdash; YOUR SHAPE IS YOUR RULE</div>
         </div>
-        <div className="timer-sub">BUILD IN SILENCE &mdash; HANDS SPEAK FIRST</div>
 
         <div className="rules-grid">
-          <div className="rule-chip"><div className="r-pip" style={{ background: "var(--acc1)" }} />Build silently. No talking until city map.</div>
-          <div className="rule-chip"><div className="r-pip" style={{ background: "var(--acc3)" }} />Follow your constraint card exactly.</div>
-          <div className="rule-chip"><div className="r-pip" style={{ background: "var(--acc4)" }} />There is no wrong build. The city needs all of you.</div>
-          <div className="rule-chip"><div className="r-pip" style={{ background: "var(--acc2)" }} />Keep your constraint secret until the reveal.</div>
+          <div className="rule-chip"><span className="rule-step-num">01</span>You are building alone. No one can see your progress.</div>
+          <div className="rule-chip"><span className="rule-step-num">02</span>Follow your shape constraint exactly.</div>
+          <div className="rule-chip"><span className="rule-step-num">03</span>There is no wrong build. The city needs all of you.</div>
+          <div className="rule-chip"><span className="rule-step-num">04</span>Keep your constraint secret until the reveal.</div>
         </div>
 
         <button

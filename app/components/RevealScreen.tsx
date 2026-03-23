@@ -7,6 +7,7 @@ import { CARDS } from "../../lib/constants";
 import { useGame } from "../GameContext";
 import BrandBar from "./BrandBar";
 import PhaseBar from "./PhaseBar";
+import CardIcon from "./CardIcon";
 
 export default function RevealScreen() {
   const { sessionId, goTo } = useGame();
@@ -17,7 +18,7 @@ export default function RevealScreen() {
 
   return (
     <div className="screen active" id="s-reveal">
-      <BrandBar backTo="s-city">
+      <BrandBar backTo="s-debrief">
         <PhaseBar current={5} />
       </BrandBar>
       <div className="rev-inner">
@@ -54,8 +55,11 @@ export default function RevealScreen() {
                   )}
                   {isOpen && card && (
                     <div className="rev-content open">
-                      <div className="rev-ctitle">{card.icon} {card.title}</div>
-                      <div className="rev-ctext">{card.rule}</div>
+                      <div className="rev-ctitle"><span style={{ color: card.color }}><CardIcon icon={card.icon} size={16} /></span> {card.title}</div>
+                      <div className="rev-ctext">{card.shapeHint}</div>
+                      <div className="rev-ctext" style={{ marginTop: 6 }}>
+                        <em>&ldquo;{card.mapClue}&rdquo;</em>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -63,8 +67,8 @@ export default function RevealScreen() {
             );
           })}
         </div>
-        <button className="lb lb-red" onClick={() => goTo("s-debrief")} style={{ width: "100%", maxWidth: 580 }}>
-          PROCEED TO DEBRIEF &rarr;
+        <button className="lb lb-red" onClick={() => goTo("s-complete")} style={{ width: "100%", maxWidth: 580 }}>
+          COMPLETE SESSION &rarr;
         </button>
       </div>
     </div>

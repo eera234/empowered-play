@@ -126,6 +126,13 @@ export const assignCard = mutation({
   },
 });
 
+export const markCardRead = mutation({
+  args: { playerId: v.id("players") },
+  handler: async (ctx, { playerId }) => {
+    await ctx.db.patch(playerId, { cardRead: true });
+  },
+});
+
 export const advancePhase = mutation({
   args: { sessionId: v.id("sessions") },
   handler: async (ctx, { sessionId }) => {
@@ -137,8 +144,8 @@ export const advancePhase = mutation({
       "building",
       "uploading",
       "city_map",
-      "constraint_reveal",
       "debrief",
+      "constraint_reveal",
       "complete",
     ];
     const idx = phases.indexOf(session.phase);
@@ -155,18 +162,42 @@ export const uploadDistrict = mutation({
     photoDataUrl: v.string(),
   },
   handler: async (ctx, { playerId, districtName, photoDataUrl }) => {
+    const player = await ctx.db.get(playerId);
+    if (!player) return;
+
     await ctx.db.patch(playerId, {
       districtName,
       photoDataUrl,
       uploaded: true,
     });
+
+    // Auto-advance phase: if all non-facilitator players have uploaded, move to city_map
+    const allPlayers = await ctx.db
+      .query("players")
+      .withIndex("by_session", (q) => q.eq("sessionId", player.sessionId))
+      .collect();
+    const nonFac = allPlayers.filter((p) => !p.isFacilitator);
+    const allUploaded = nonFac.every((p) => p._id === playerId ? true : p.uploaded);
+
+    if (allUploaded) {
+      const session = await ctx.db.get(player.sessionId);
+      if (session && (session.phase === "building" || session.phase === "uploading")) {
+        await ctx.db.patch(player.sessionId, { phase: "city_map" });
+      }
+    } else {
+      // At least one person uploaded — move from building to uploading if still in building
+      const session = await ctx.db.get(player.sessionId);
+      if (session && session.phase === "building") {
+        await ctx.db.patch(player.sessionId, { phase: "uploading" });
+      }
+    }
   },
 });
 
 export const moveDistrict = mutation({
-  args: { playerId: v.id("players"), x: v.number(), y: v.number() },
-  handler: async (ctx, { playerId, x, y }) => {
-    await ctx.db.patch(playerId, { x, y });
+  args: { playerId: v.id("players"), x: v.number(), y: v.number(), slotId: v.optional(v.string()) },
+  handler: async (ctx, { playerId, x, y, slotId }) => {
+    await ctx.db.patch(playerId, { x, y, slotId });
   },
 });
 
@@ -176,6 +207,7 @@ export const sendMessage = mutation({
     sender: v.string(),
     text: v.string(),
     isFacilitator: v.boolean(),
+    audioDataUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await ctx.db.insert("messages", args);
@@ -185,6 +217,7 @@ export const sendMessage = mutation({
 export const submitDebrief = mutation({
   args: {
     sessionId: v.id("sessions"),
+    playerId: v.optional(v.id("players")),
     question: v.string(),
     answer: v.string(),
   },

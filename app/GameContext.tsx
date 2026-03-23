@@ -8,8 +8,13 @@ interface CardData {
   title: string;
   icon: string;
   color: string;
-  rule: string;
+  shape: string;
+  shapeHint: string;
+  buildTime: number;
+  mapRule: string;
+  mapClue: string;
   hrNote: string;
+  empowermentLevel: "high" | "medium" | "low";
 }
 
 interface GameState {
@@ -22,6 +27,7 @@ interface GameState {
   myCard: CardData | null;
   photo: string | null;
   distName: string;
+  scenario: string;
 }
 
 interface GameContextValue extends GameState {
@@ -42,6 +48,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     myCard: null,
     photo: null,
     distName: "",
+    scenario: "",
   });
 
   const set = useCallback((updates: Partial<GameState>) => {

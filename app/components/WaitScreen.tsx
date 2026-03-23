@@ -14,6 +14,30 @@ export default function WaitScreen() {
     <div className="screen active" id="s-wait">
       <BrandBar />
       <div className="wait-wrap">
+        {/* Animated brick stacking */}
+        <div className="brick-stack">
+          <div className="stack-brick">
+            <span className="stack-stud" />
+            <span className="stack-stud" />
+            <span className="stack-stud" />
+          </div>
+          <div className="stack-brick">
+            <span className="stack-stud" />
+            <span className="stack-stud" />
+          </div>
+          <div className="stack-brick">
+            <span className="stack-stud" />
+            <span className="stack-stud" />
+            <span className="stack-stud" />
+          </div>
+          <div className="stack-brick">
+            <span className="stack-stud" />
+            <span className="stack-stud" />
+            <span className="stack-stud" />
+            <span className="stack-stud" />
+          </div>
+        </div>
+
         <div className="wait-code-box">
           <div className="wc-lbl">YOU ARE IN</div>
           <div className="wc-name" id="wait-player-name">{name}</div>

@@ -1,20 +1,93 @@
 "use client";
 
 import { useState, useRef, ChangeEvent, DragEvent } from "react";
-import { useMutation } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { CARDS, SCENARIOS } from "../../lib/constants";
 import { toast } from "sonner";
 import { useGame } from "../GameContext";
 import BrandBar from "./BrandBar";
 import PhaseBar from "./PhaseBar";
+import CardIcon from "./CardIcon";
+
+// ── Shape silhouette SVG paths ──
+// These define the outline shown on camera/preview
+const SHAPE_PATHS: Record<string, { path: string; viewBox: string; label: string }> = {
+  "tall-narrow": {
+    path: "M35 10 L55 10 Q60 10 60 15 L60 85 Q60 90 55 90 L35 90 Q30 90 30 85 L30 15 Q30 10 35 10 Z",
+    viewBox: "0 0 90 100",
+    label: "TALL",
+  },
+  "wide-flat": {
+    path: "M10 35 L80 35 Q85 35 85 40 L85 65 Q85 70 80 70 L10 70 Q5 70 5 65 L5 40 Q5 35 10 35 Z",
+    viewBox: "0 0 90 100",
+    label: "WIDE",
+  },
+  "enclosed-square": {
+    path: "M20 20 L70 20 Q75 20 75 25 L75 75 Q75 80 70 80 L20 80 Q15 80 15 75 L15 25 Q15 20 20 20 Z M30 30 L60 30 L60 70 L30 70 Z",
+    viewBox: "0 0 90 100",
+    label: "ENCLOSED",
+  },
+  "long-horizontal": {
+    path: "M5 38 L85 38 Q90 38 90 43 L90 57 Q90 62 85 62 L5 62 Q0 62 0 57 L0 43 Q0 38 5 38 Z",
+    viewBox: "0 0 90 100",
+    label: "LONG",
+  },
+  "tapered-peak": {
+    path: "M45 10 L60 35 L65 85 Q65 90 60 90 L30 90 Q25 90 25 85 L30 35 Z",
+    viewBox: "0 0 90 100",
+    label: "TAPERED",
+  },
+  "open-organic": {
+    path: "M45 15 Q65 15 70 30 Q80 45 70 60 Q65 75 50 80 Q35 85 25 70 Q15 55 20 40 Q25 25 45 15 Z",
+    viewBox: "0 0 90 100",
+    label: "OPEN",
+  },
+  "compact-dense": {
+    path: "M30 25 L60 25 Q65 25 65 30 L65 70 Q65 75 60 75 L30 75 Q25 75 25 70 L25 30 Q25 25 30 25 Z",
+    viewBox: "0 0 90 100",
+    label: "COMPACT",
+  },
+  "gateway-opening": {
+    path: "M20 15 L40 15 Q42 15 42 17 L42 55 Q45 70 48 55 L48 17 Q48 15 50 15 L70 15 Q75 15 75 20 L75 85 Q75 90 70 90 L20 90 Q15 90 15 85 L15 20 Q15 15 20 15 Z",
+    viewBox: "0 0 90 100",
+    label: "GATEWAY",
+  },
+};
+
+function ShapeOverlay({ shape, color }: { shape: string; color: string }) {
+  const s = SHAPE_PATHS[shape];
+  if (!s) return null;
+  return (
+    <div className="shape-overlay">
+      <svg viewBox={s.viewBox} className="shape-svg" preserveAspectRatio="xMidYMid meet">
+        <path
+          d={s.path}
+          fill="none"
+          stroke={color}
+          strokeWidth="2.5"
+          strokeDasharray="8 4"
+          opacity=".7"
+        />
+      </svg>
+      <div className="shape-label" style={{ color }}>
+        {s.label}
+      </div>
+    </div>
+  );
+}
 
 export default function UploadScreen() {
-  const { playerId, set, goTo } = useGame();
+  const { playerId, myCard, sessionCode, scenario, set, goTo } = useGame();
+  const session = useQuery(api.game.getSession, sessionCode ? { code: sessionCode } : "skip");
   const uploadDistrict = useMutation(api.game.uploadDistrict);
+
+  const scenarioData = SCENARIOS.find((s) => s.id === (scenario || session?.scenario)) || SCENARIOS[0];
+  const districtName = myCard ? scenarioData.districtNames[myCard.id] : "";
 
   const [mode, setMode] = useState<"camera" | "file" | null>(null);
   const [photo, setPhoto] = useState<string | null>(null);
-  const [distName, setDistName] = useState("");
+  const [distName, setDistName] = useState(districtName);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -83,12 +156,12 @@ export default function UploadScreen() {
 
   async function handleSubmit() {
     if (!playerId || !photo) return;
-    const name = distName.trim();
-    set({ distName: name, photo });
+    const finalName = distName.trim();
+    set({ distName: finalName, photo });
     stopCam();
     await uploadDistrict({
       playerId,
-      districtName: name,
+      districtName: finalName,
       photoDataUrl: photo,
     });
     toast("District transmitted \u2713");
@@ -96,7 +169,7 @@ export default function UploadScreen() {
   }
 
   return (
-    <div className="screen active" id="s-upload">
+    <div className="screen active stud-bg-subtle" id="s-upload">
       <BrandBar backTo="s-build">
         <PhaseBar current={3} />
       </BrandBar>
@@ -105,8 +178,14 @@ export default function UploadScreen() {
           <div style={{ fontFamily: "'Black Han Sans', sans-serif", fontSize: 22, letterSpacing: 2, marginBottom: 5 }}>
             TRANSMIT YOUR DISTRICT
           </div>
-          <div style={{ fontSize: 13, color: "var(--textd)" }}>
-            Anonymous until the reveal phase
+          {myCard && (
+            <div className="up-card-reminder" style={{ borderColor: myCard.color + "44" }}>
+              <span style={{ color: myCard.color }}><CardIcon icon={myCard.icon} size={16} /> {myCard.title}</span>
+              <span className="up-card-shape">{myCard.shapeHint.split(".")[0]}</span>
+            </div>
+          )}
+          <div style={{ fontSize: 12, color: "var(--textd)", marginTop: 6 }}>
+            Position your LEGO build to fit the shape outline, then capture
           </div>
         </div>
 
@@ -115,7 +194,7 @@ export default function UploadScreen() {
             className={`up-opt${mode === "camera" ? " act" : ""}`}
             onClick={() => selectMode("camera")}
           >
-            <div className="up-icon">📷</div>
+            <div className="up-icon">{"\u{1F4F7}"}</div>
             <div className="up-lbl">Camera</div>
             <div className="up-sub">Webcam or phone</div>
           </div>
@@ -123,7 +202,7 @@ export default function UploadScreen() {
             className={`up-opt${mode === "file" ? " act" : ""}`}
             onClick={() => selectMode("file")}
           >
-            <div className="up-icon">📁</div>
+            <div className="up-icon">{"\u{1F4C1}"}</div>
             <div className="up-lbl">Upload</div>
             <div className="up-sub">From gallery</div>
           </div>
@@ -131,7 +210,12 @@ export default function UploadScreen() {
 
         {mode === "camera" && (
           <div className="cam-area vis">
-            <video className="cam-video" ref={videoRef} autoPlay playsInline muted />
+            <div className="cam-viewport">
+              <video className="cam-video" ref={videoRef} autoPlay playsInline muted />
+              {myCard && (
+                <ShapeOverlay shape={myCard.shape} color={myCard.color} />
+              )}
+            </div>
             <div className="cam-ctrl">
               <button className="lb lb-red" style={{ fontSize: 13, padding: "9px 18px" }} onClick={capturePhoto}>
                 CAPTURE
@@ -150,7 +234,7 @@ export default function UploadScreen() {
             onDragOver={(e) => e.preventDefault()}
             onDrop={handleDrop}
           >
-            <div className="dz-icon">📦</div>
+            <div className="dz-icon">{"\u{1F4E6}"}</div>
             <div className="dz-text">Tap to browse or drag &amp; drop</div>
             <div className="dz-sub">JPG, PNG, HEIC &mdash; phone photo works</div>
           </div>
@@ -169,26 +253,34 @@ export default function UploadScreen() {
           <div className="prev-area vis">
             <div className="prev-wrap">
               <img className="prev-img" src={photo} alt="District" />
-              <div className="prev-badge">CAPTURED &check;</div>
+              {myCard && (
+                <ShapeOverlay shape={myCard.shape} color={myCard.color} />
+              )}
+              <div className="prev-badge">CAPTURED &#10003;</div>
             </div>
-            <button className="retake" onClick={() => setPhoto(null)}>
-              ↺ retake
-            </button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="retake" onClick={() => setPhoto(null)}>
+                {"\u21BA"} retake
+              </button>
+              <button className="retake" onClick={() => selectMode("camera")}>
+                {"\u{1F4F7}"} new capture
+              </button>
+            </div>
           </div>
         )}
 
         <div style={{ width: "100%" }}>
-          <label className="field-lbl" htmlFor="dist-name">Name your district</label>
+          <label className="field-lbl" htmlFor="dist-name">District name</label>
           <input
             className="linput"
             id="dist-name"
             type="text"
-            placeholder="e.g. The Crossing, Signal Tower\u2026"
+            placeholder={districtName || "Name your district\u2026"}
             maxLength={32}
             value={distName}
             onChange={(e) => setDistName(e.target.value)}
           />
-          <div className="anon-pill" style={{ marginTop: 9 }}>🔒 Anonymous until city reveal</div>
+          <div className="anon-pill" style={{ marginTop: 9 }}>Anonymous until the reveal</div>
         </div>
 
         <button

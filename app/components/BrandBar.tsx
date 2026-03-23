@@ -15,9 +15,9 @@ export default function BrandBar({ badge, backTo, children }: BrandBarProps) {
   return (
     <div className="brand-bar">
       <div className="b-studs">
-        <div className="b-stud" />
-        <div className="b-stud" />
-        <div className="b-stud" />
+        <div className="lego-stud-3d" />
+        <div className="lego-stud-3d" />
+        <div className="lego-stud-3d" />
       </div>
       <div className="b-name" onClick={() => goTo("s-entry")}>
         (Em)Powered Play
