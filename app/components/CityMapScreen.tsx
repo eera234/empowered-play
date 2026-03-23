@@ -738,9 +738,11 @@ export default function CityMapScreen() {
   const prevMsgCountRef = useRef(0);
   const chatMsgsRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<DragState>({ el: null, off: { x: 0, y: 0 }, playerId: null });
+  const dragRef = useRef<{ off: { x: number; y: number }; dragging: boolean; pId: Id<"players"> | null }>({ off: { x: 0, y: 0 }, dragging: false, pId: null });
   const [chatInput, setChatInput] = useState("");
   const [showConditions, setShowConditions] = useState(false);
+  const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
+  const [draggingId, setDraggingId] = useState<Id<"players"> | null>(null);
 
   const scenarioData = SCENARIOS.find((s) => s.id === (scenario || session?.scenario)) || SCENARIOS[0];
   const mapTheme = scenarioData.mapTheme;
@@ -767,15 +769,16 @@ export default function CityMapScreen() {
     slots
   );
 
-  // Drag handlers
+  // Drag handlers — use React state, not DOM manipulation
   function startDrag(e: MouseEvent | TouchEvent, pId: Id<"players">) {
     if (pId !== playerId) return;
     e.preventDefault();
     const el = e.currentTarget as HTMLElement;
     const r = el.getBoundingClientRect();
     const touch = "touches" in e ? e.touches[0] : e;
-    dragRef.current = { el, off: { x: touch.clientX - r.left, y: touch.clientY - r.top }, playerId: pId };
-    el.classList.add("dragging");
+    dragRef.current = { off: { x: touch.clientX - r.left, y: touch.clientY - r.top }, dragging: true, pId };
+    setDraggingId(pId);
+    setDragPos({ x: r.left - (mapRef.current?.getBoundingClientRect().left || 0), y: r.top - (mapRef.current?.getBoundingClientRect().top || 0) });
     document.addEventListener("mousemove", onDragMove);
     document.addEventListener("mouseup", onDragEnd);
     document.addEventListener("touchmove", onDragMove, { passive: false });
@@ -784,14 +787,13 @@ export default function CityMapScreen() {
 
   function onDragMove(e: globalThis.MouseEvent | globalThis.TouchEvent) {
     const d = dragRef.current;
-    if (!d.el || !mapRef.current) return;
+    if (!d.dragging || !mapRef.current) return;
     if ("touches" in e) e.preventDefault();
     const touch = "touches" in e ? e.touches[0] : e;
     const ar = mapRef.current.getBoundingClientRect();
     const x = Math.max(0, Math.min(ar.width - 120, touch.clientX - ar.left - d.off.x));
     const y = Math.max(0, Math.min(ar.height - 120, touch.clientY - ar.top - d.off.y));
-    d.el.style.left = x + "px";
-    d.el.style.top = y + "px";
+    setDragPos({ x, y });
   }
 
   // Convert percentage slot position to pixel position in map area
@@ -848,19 +850,22 @@ export default function CityMapScreen() {
 
   function onDragEnd() {
     const d = dragRef.current;
-    if (!d.el || !d.playerId) return;
-    d.el.classList.remove("dragging");
-    const rawX = parseFloat(d.el.style.left);
-    const rawY = parseFloat(d.el.style.top);
+    if (!d.dragging || !d.pId || !dragPos) {
+      setDraggingId(null);
+      setDragPos(null);
+      return;
+    }
+    const rawX = dragPos.x;
+    const rawY = dragPos.y;
 
     // Get this player's card
-    const me = nonFac.find((p) => p._id === d.playerId);
+    const me = nonFac.find((p) => p._id === d.pId);
     const myCard = me?.cardIndex != null ? CARDS[me.cardIndex] : null;
-    const placedCount = nonFac.filter((p) => p.slotId && p._id !== d.playerId).length;
+    const placedCount = nonFac.filter((p) => p.slotId && p._id !== d.pId).length;
 
     // Find the nearest available slot
     const currentOccupied = new Set(
-      nonFac.filter((p) => p.slotId && p._id !== d.playerId).map((p) => p.slotId!)
+      nonFac.filter((p) => p.slotId && p._id !== d.pId).map((p) => p.slotId!)
     );
     const availableSlots = slots.filter((s) => !currentOccupied.has(s.id));
 
@@ -886,22 +891,15 @@ export default function CityMapScreen() {
     if (!bestSlot && sorted.length > 0) {
       const check = isValidPlacement(myCard, sorted[0].slot, placedCount);
       toast(check.reason || "No valid zone available for your card");
-      // Reset position to previous
-      if (me?.slotId) {
-        const prevSlot = slots.find((s) => s.id === me.slotId);
-        if (prevSlot) {
-          d.el.style.left = prevSlot.x + "%";
-          d.el.style.top = prevSlot.y + "%";
-        }
-      }
+      // Position will reset to Convex data on next render
     } else if (bestSlot) {
-      const px = slotToPixel(bestSlot);
-      d.el.style.left = px.x + "px";
-      d.el.style.top = px.y + "px";
-      moveDistrict({ playerId: d.playerId, x: bestSlot.x, y: bestSlot.y, slotId: bestSlot.id });
+      moveDistrict({ playerId: d.pId, x: bestSlot.x, y: bestSlot.y, slotId: bestSlot.id });
     }
 
-    dragRef.current = { el: null, off: { x: 0, y: 0 }, playerId: null };
+    // Clean up — React state handles positioning from here
+    setDraggingId(null);
+    setDragPos(null);
+    dragRef.current = { off: { x: 0, y: 0 }, dragging: false, pId: null };
     document.removeEventListener("mousemove", onDragMove);
     document.removeEventListener("mouseup", onDragEnd);
     document.removeEventListener("touchmove", onDragMove);
@@ -1041,20 +1039,29 @@ export default function CityMapScreen() {
             const isMe = p._id === playerId;
             const card = p.cardIndex != null ? CARDS[p.cardIndex] : null;
             const distName = card ? scenarioData.districtNames[card.id] : p.districtName;
+            const isBeingDragged = draggingId === p._id;
             const slotData = p.slotId ? slots.find((s) => s.id === p.slotId) : null;
-            // Use percentage for snapped, pixels for mid-drag
-            const usePercent = !!slotData;
-            const posX = slotData ? slotData.x : (p.x ?? 10);
-            const posY = slotData ? slotData.y : (p.y ?? 10);
+
+            // Position: if currently being dragged, use dragPos (pixels).
+            // Otherwise use slot percentage or fallback pixel position from Convex.
+            let posStyle: React.CSSProperties;
+            if (isBeingDragged && dragPos) {
+              posStyle = { left: dragPos.x + "px", top: dragPos.y + "px" };
+            } else if (slotData) {
+              posStyle = { left: slotData.x + "%", top: slotData.y + "%" };
+            } else {
+              posStyle = { left: (p.x ?? 10) + "%", top: (p.y ?? 10) + "%" };
+            }
+
             return (
               <div
                 key={p._id}
-                className={`dist-card${isMe ? " mine" : ""}`}
+                className={`dist-card${isMe ? " mine" : ""}${isBeingDragged ? " dragging" : ""}`}
                 style={{
-                  left: usePercent ? posX + "%" : posX + "px",
-                  top: usePercent ? posY + "%" : posY + "px",
+                  ...posStyle,
                   borderColor: card ? card.color + "66" : undefined,
-                  zIndex: 3,
+                  zIndex: isBeingDragged ? 100 : 10,
+                  transition: isBeingDragged ? "none" : "left .3s, top .3s",
                 }}
                 onMouseDown={(e) => startDrag(e, p._id)}
                 onTouchStart={(e) => startDrag(e, p._id)}
