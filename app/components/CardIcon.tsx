@@ -19,6 +19,15 @@ const ICON_COLORS: Record<string, { main: string; shade: string; hi: string }> =
   commons: { main: "#4A148C", shade: "#2A0054", hi: "#9C27B0" },  // deep purple on green bg
   vault:   { main: "#00BFA5", shade: "#00897B", hi: "#64FFDA" },  // teal on purple bg
   arch:    { main: "#1565C0", shade: "#0D47A1", hi: "#42A5F5" },  // bright blue on pink bg
+  // Space theme icons
+  "antenna":     { main: "#1A237E", shade: "#0D1442", hi: "#5C6BC0" },
+  "solar-array": { main: "#1B5E20", shade: "#0A3A10", hi: "#4CAF50" },
+  "bulkhead":    { main: "#F57C00", shade: "#BF360C", hi: "#FFB74D" },
+  "connector":   { main: "#C62828", shade: "#8E0000", hi: "#EF5350" },
+  "nav-beacon":  { main: "#C62828", shade: "#8E0000", hi: "#FF6659" },
+  "hub":         { main: "#4A148C", shade: "#2A0054", hi: "#9C27B0" },
+  "capsule":     { main: "#00BFA5", shade: "#00897B", hi: "#64FFDA" },
+  "hatch":       { main: "#1565C0", shade: "#0D47A1", hi: "#42A5F5" },
 };
 
 export default function CardIcon({ icon, size = 32 }: { icon: string; size?: number }) {
@@ -136,6 +145,122 @@ export default function CardIcon({ icon, size = 32 }: { icon: string; size?: num
           <path d="M16 36 L16 22 Q20 16 24 22 L24 36 Z" fill={d} />
           <circle cx="9" cy="6.5" r="2" fill={c.shade} stroke={c.hi} strokeWidth=".4" />
           <circle cx="31" cy="6.5" r="2" fill={c.shade} stroke={c.hi} strokeWidth=".4" />
+        </svg>
+      );
+    // ── Space theme icons ──
+    case "antenna":
+      return (
+        <svg viewBox="0 0 40 40" width={size} height={size}>
+          <rect x="18" y="14" width="4" height="22" rx="1" fill={c.main} />
+          <rect x="18" y="14" width="4" height="2" fill={c.hi} opacity=".3" />
+          <circle cx="20" cy="10" r="6" fill="none" stroke={c.main} strokeWidth="2" />
+          <circle cx="20" cy="10" r="3" fill={c.shade} />
+          <circle cx="20" cy="10" r="1.5" fill={c.hi} opacity=".5" />
+          <path d="M12 8 Q16 4 20 4" fill="none" stroke={c.hi} strokeWidth="1" opacity=".4" />
+          <path d="M8 12 Q12 6 20 4" fill="none" stroke={c.hi} strokeWidth=".8" opacity=".3" />
+          <rect x="14" y="34" width="12" height="4" rx="1" fill={c.shade} />
+          <circle cx="17" cy="33" r="2" fill={c.shade} stroke={c.hi} strokeWidth=".4" />
+          <circle cx="23" cy="33" r="2" fill={c.shade} stroke={c.hi} strokeWidth=".4" />
+        </svg>
+      );
+    case "solar-array":
+      return (
+        <svg viewBox="0 0 40 40" width={size} height={size}>
+          <rect x="4" y="16" width="14" height="20" rx="1" fill={c.main} />
+          <rect x="22" y="16" width="14" height="20" rx="1" fill={c.main} />
+          <rect x="18" y="18" width="4" height="16" rx="1" fill={c.shade} />
+          {[0,1,2].map(r => [0,1].map(col => <rect key={`l${r}${col}`} x={6+col*6} y={18+r*6} width="4" height="4" rx=".5" fill={c.hi} opacity=".3" />))}
+          {[0,1,2].map(r => [0,1].map(col => <rect key={`r${r}${col}`} x={24+col*6} y={18+r*6} width="4" height="4" rx=".5" fill={c.hi} opacity=".3" />))}
+          <circle cx="20" cy="14" r="3" fill={c.shade} stroke={c.hi} strokeWidth=".5" />
+        </svg>
+      );
+    case "bulkhead":
+      return (
+        <svg viewBox="0 0 40 40" width={size} height={size}>
+          <rect x="6" y="8" width="28" height="26" rx="2" fill={c.main} />
+          <rect x="6" y="8" width="28" height="2" fill={c.hi} opacity=".3" />
+          <rect x="32" y="8" width="2" height="26" fill={c.shade} opacity=".3" />
+          <rect x="10" y="12" width="20" height="18" rx="1" fill={d} />
+          <line x1="10" y1="18" x2="30" y2="18" stroke={c.hi} strokeWidth=".5" opacity=".3" />
+          <line x1="10" y1="24" x2="30" y2="24" stroke={c.hi} strokeWidth=".5" opacity=".3" />
+          <line x1="20" y1="12" x2="20" y2="30" stroke={c.hi} strokeWidth=".5" opacity=".3" />
+          <circle cx="15" cy="6" r="2.5" fill={c.shade} stroke={c.hi} strokeWidth=".4" />
+          <circle cx="25" cy="6" r="2.5" fill={c.shade} stroke={c.hi} strokeWidth=".4" />
+        </svg>
+      );
+    case "connector":
+      return (
+        <svg viewBox="0 0 40 40" width={size} height={size}>
+          <rect x="2" y="16" width="36" height="10" rx="3" fill={c.main} />
+          <rect x="2" y="16" width="36" height="2" fill={c.hi} opacity=".3" />
+          <circle cx="8" cy="21" r="3" fill={d} stroke={c.hi} strokeWidth=".5" opacity=".5" />
+          <circle cx="20" cy="21" r="3" fill={d} stroke={c.hi} strokeWidth=".5" opacity=".5" />
+          <circle cx="32" cy="21" r="3" fill={d} stroke={c.hi} strokeWidth=".5" opacity=".5" />
+          <rect x="6" y="28" width="6" height="4" rx="1" fill={c.shade} />
+          <rect x="28" y="28" width="6" height="4" rx="1" fill={c.shade} />
+          <circle cx="10" cy="14" r="2" fill={c.shade} stroke={c.hi} strokeWidth=".4" />
+          <circle cx="20" cy="14" r="2" fill={c.shade} stroke={c.hi} strokeWidth=".4" />
+          <circle cx="30" cy="14" r="2" fill={c.shade} stroke={c.hi} strokeWidth=".4" />
+        </svg>
+      );
+    case "nav-beacon":
+      return (
+        <svg viewBox="0 0 40 40" width={size} height={size}>
+          <polygon points="20,4 28,16 26,34 14,34 12,16" fill={c.main} />
+          <polygon points="20,4 12,16 14,34" fill={c.hi} opacity=".1" />
+          <circle cx="20" cy="8" r="4" fill={c.hi} opacity=".3" />
+          <circle cx="20" cy="8" r="2" fill={c.hi} opacity=".6" />
+          <line x1="20" y1="4" x2="20" y2="1" stroke={c.hi} strokeWidth="1" />
+          <line x1="14" y1="6" x2="10" y2="3" stroke={c.hi} strokeWidth=".8" opacity=".4" />
+          <line x1="26" y1="6" x2="30" y2="3" stroke={c.hi} strokeWidth=".8" opacity=".4" />
+          <rect x="16" y="18" width="8" height="4" rx=".5" fill={d} />
+          <rect x="15" y="26" width="10" height="4" rx=".5" fill={d} opacity=".7" />
+          <rect x="12" y="32" width="16" height="4" rx="1" fill={c.shade} />
+        </svg>
+      );
+    case "hub":
+      return (
+        <svg viewBox="0 0 40 40" width={size} height={size}>
+          <circle cx="20" cy="20" r="14" fill={c.main} />
+          <circle cx="20" cy="20" r="14" fill="none" stroke={c.shade} strokeWidth="1" />
+          <circle cx="20" cy="20" r="8" fill={d} />
+          <circle cx="20" cy="20" r="4" fill={c.hi} opacity=".3" />
+          <line x1="20" y1="6" x2="20" y2="12" stroke={c.hi} strokeWidth="1.5" opacity=".4" />
+          <line x1="20" y1="28" x2="20" y2="34" stroke={c.hi} strokeWidth="1.5" opacity=".4" />
+          <line x1="6" y1="20" x2="12" y2="20" stroke={c.hi} strokeWidth="1.5" opacity=".4" />
+          <line x1="28" y1="20" x2="34" y2="20" stroke={c.hi} strokeWidth="1.5" opacity=".4" />
+          <circle cx="14" cy="5" r="2" fill={c.shade} stroke={c.hi} strokeWidth=".4" />
+          <circle cx="26" cy="5" r="2" fill={c.shade} stroke={c.hi} strokeWidth=".4" />
+        </svg>
+      );
+    case "capsule":
+      return (
+        <svg viewBox="0 0 40 40" width={size} height={size}>
+          <rect x="12" y="8" width="16" height="24" rx="8" fill={c.main} />
+          <rect x="12" y="8" width="16" height="3" fill={c.hi} opacity=".2" />
+          <rect x="26" y="8" width="2" height="24" fill={c.shade} opacity=".3" />
+          <circle cx="20" cy="18" r="4" fill={d} stroke={c.hi} strokeWidth=".8" opacity=".6" />
+          <circle cx="20" cy="18" r="1.5" fill={c.hi} opacity=".4" />
+          <rect x="16" y="26" width="8" height="3" rx=".5" fill={d} opacity=".5" />
+          <rect x="14" y="32" width="12" height="4" rx="1" fill={c.shade} />
+          <circle cx="17" cy="6" r="2" fill={c.shade} stroke={c.hi} strokeWidth=".4" />
+          <circle cx="23" cy="6" r="2" fill={c.shade} stroke={c.hi} strokeWidth=".4" />
+        </svg>
+      );
+    case "hatch":
+      return (
+        <svg viewBox="0 0 40 40" width={size} height={size}>
+          <rect x="6" y="8" width="28" height="28" rx="3" fill={c.main} />
+          <rect x="6" y="8" width="28" height="2" fill={c.hi} opacity=".2" />
+          <rect x="32" y="8" width="2" height="28" fill={c.shade} opacity=".3" />
+          <circle cx="20" cy="22" r="8" fill={d} stroke={c.hi} strokeWidth="1.5" />
+          <line x1="14" y1="22" x2="26" y2="22" stroke={c.hi} strokeWidth="1" opacity=".4" />
+          <line x1="20" y1="14" x2="20" y2="30" stroke={c.hi} strokeWidth="1" opacity=".4" />
+          <rect x="16" y="10" width="3" height="3" rx=".5" fill={c.hi} opacity=".2" />
+          <rect x="22" y="10" width="3" height="3" rx=".5" fill={c.hi} opacity=".2" />
+          <circle cx="13" cy="6" r="2" fill={c.shade} stroke={c.hi} strokeWidth=".4" />
+          <circle cx="20" cy="6" r="2" fill={c.shade} stroke={c.hi} strokeWidth=".4" />
+          <circle cx="27" cy="6" r="2" fill={c.shade} stroke={c.hi} strokeWidth=".4" />
         </svg>
       );
     default:

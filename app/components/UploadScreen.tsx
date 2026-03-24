@@ -88,11 +88,13 @@ export default function UploadScreen() {
   const [mode, setMode] = useState<"camera" | null>(null);
   const [photo, setPhoto] = useState<string | null>(null);
   const [distName, setDistName] = useState("");
+  const [detecting, setDetecting] = useState(false);
+  const [legoVerified, setLegoVerified] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const canSubmit = photo && distName.trim().length > 0;
+  const canSubmit = photo && legoVerified && distName.trim().length > 0;
 
   function selectCamera() {
     setMode("camera");
@@ -121,16 +123,42 @@ export default function UploadScreen() {
     }
   }
 
-  function capturePhoto() {
+  async function capturePhoto() {
     const v = videoRef.current;
     const c = canvasRef.current;
     if (!v || !c) return;
     c.width = v.videoWidth;
     c.height = v.videoHeight;
     c.getContext("2d")?.drawImage(v, 0, 0);
-    setPhoto(c.toDataURL("image/jpeg", 0.85));
+    const dataUrl = c.toDataURL("image/jpeg", 0.85);
+    setPhoto(dataUrl);
     stopCam();
     setMode(null);
+
+    // Run LEGO detection via Gemini
+    setDetecting(true);
+    setLegoVerified(false);
+    try {
+      const res = await fetch("/api/detect-lego", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageDataUrl: dataUrl }),
+      });
+      const data = await res.json();
+      console.log("Detection result:", data);
+      if (data.isLego) {
+        setLegoVerified(true);
+        toast("LEGO detected \u2713");
+      } else {
+        toast(data.error ? `Detection error: ${data.error}` : "No LEGO detected. Retake with your build in frame.");
+        setLegoVerified(false);
+      }
+    } catch (err) {
+      console.error("Detection fetch error:", err);
+      toast("Could not verify image. Try again.");
+      setLegoVerified(false);
+    }
+    setDetecting(false);
   }
 
 
@@ -209,10 +237,22 @@ export default function UploadScreen() {
               {myCard && (
                 <ShapeOverlay shape={myCard.shape} color={myCard.color} />
               )}
-              <div className="prev-badge">CAPTURED &#10003;</div>
+              <div className="prev-badge">
+                {detecting ? "CHECKING..." : legoVerified ? "LEGO DETECTED \u2713" : "CAPTURED"}
+              </div>
             </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button className="retake" onClick={() => setPhoto(null)}>
+            {detecting && (
+              <div style={{ fontSize: 12, color: "var(--acc2)", fontWeight: 800, textAlign: "center" }}>
+                Verifying LEGO...
+              </div>
+            )}
+            {!detecting && photo && !legoVerified && (
+              <div style={{ fontSize: 12, color: "var(--acc3)", fontWeight: 800, textAlign: "center" }}>
+                No LEGO detected. Retake with your LEGO build in frame.
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+              <button className="retake" onClick={() => { setPhoto(null); setLegoVerified(false); }}>
                 {"\u21BA"} retake
               </button>
               <button className="retake" onClick={selectCamera}>

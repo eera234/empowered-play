@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { CARDS, SCENARIOS } from "../../lib/constants";
+import { CARDS, SCENARIOS, getThemedCard } from "../../lib/constants";
 import { useGame } from "../GameContext";
 import BrandBar from "./BrandBar";
 import PhaseBar from "./PhaseBar";
@@ -17,14 +17,23 @@ export default function CardRevealScreen() {
   const [opened, setOpened] = useState(false);
 
   const me = (players || []).find((p) => p._id === playerId);
-  const card = me?.cardIndex != null ? CARDS[me.cardIndex] : null;
+  const baseCard = me?.cardIndex != null ? CARDS[me.cardIndex] : null;
   const scenario = SCENARIOS.find((s) => s.id === session?.scenario) || SCENARIOS[0];
+  const card = baseCard ? getThemedCard(baseCard, scenario) : null;
   const districtName = card ? scenario.districtNames[card.id] : null;
+  const termDistrict = scenario.terminology.district;
 
-  // Store card in game context when assigned
+  // Store themed card in game context when assigned
+  // Depend on stable values (cardIndex + scenario ID), not the card object
+  const cardIndex = me?.cardIndex;
+  const scenarioId = session?.scenario;
   useEffect(() => {
-    if (card) set({ myCard: card });
-  }, [card, set]);
+    if (cardIndex != null && scenarioId) {
+      const base = CARDS[cardIndex];
+      const scen = SCENARIOS.find((s) => s.id === scenarioId) || SCENARIOS[0];
+      set({ myCard: getThemedCard(base, scen) });
+    }
+  }, [cardIndex, scenarioId, set]);
 
   function handleOpen() {
     if (!card || !playerId) return;
@@ -91,7 +100,7 @@ export default function CardRevealScreen() {
               </div>
               {districtName && (
                 <div className="crd-district-name">
-                  Your district: <strong>{districtName}</strong>
+                  Your {termDistrict}: <strong>{districtName}</strong>
                 </div>
               )}
               <div className="crd-rule">{card.shapeHint}</div>

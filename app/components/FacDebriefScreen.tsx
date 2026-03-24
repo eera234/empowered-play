@@ -11,23 +11,23 @@ import CardIcon from "./CardIcon";
 const FAC_QUESTIONS = [
   {
     num: "1 OF 4",
-    prompt: "Who built fastest? Who hesitated?",
-    options: ["Everyone was similar", "Clear fast finishers", "Some struggled", "Big variation in pace"],
+    prompt: "How did the team handle the build phase?",
+    options: ["Similar pace", "Mixed", "Very different"],
   },
   {
     num: "2 OF 4",
-    prompt: "Who led placement? Who waited?",
-    options: ["Shared equally", "One person led", "A few took charge", "Most waited to be told"],
+    prompt: "How were decisions made on the map?",
+    options: ["Together", "One led", "Unclear"],
   },
   {
     num: "3 OF 4",
-    prompt: "Did the cards shift usual team dynamics?",
-    options: ["Yes, noticeably", "Somewhat", "Not really", "Hard to tell"],
+    prompt: "Did the cards change behaviour?",
+    options: ["Noticeably", "Subtly", "Not really"],
   },
   {
     num: "4 OF 4",
-    prompt: "What surprised you?",
-    options: ["Someone stepped up unexpectedly", "Usual leaders held back", "Team collaborated well", "Communication was harder than expected"],
+    prompt: "What stood out most?",
+    options: ["New voices", "Adaptation", "Good rhythm"],
   },
 ];
 

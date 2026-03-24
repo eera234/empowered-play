@@ -7,7 +7,7 @@ import { Id } from "../../convex/_generated/dataModel";
 import { toast } from "sonner";
 import { useGame } from "../GameContext";
 import BrandBar from "./BrandBar";
-import { CARDS } from "../../lib/constants";
+import { CARDS, SCENARIOS, getThemedCard } from "../../lib/constants";
 import CardIcon from "./CardIcon";
 
 type AssignMode =
@@ -16,7 +16,9 @@ type AssignMode =
   | { step: "player_selected"; playerId: Id<"players"> };
 
 export default function FacSetupScreen() {
-  const { sessionCode, sessionId, goTo } = useGame();
+  const { sessionCode, sessionId, scenario, goTo } = useGame();
+  const scenarioData = SCENARIOS.find((s) => s.id === scenario) || SCENARIOS[0];
+  const themedCards = CARDS.map((c) => getThemedCard(c, scenarioData));
   const players = useQuery(api.game.getPlayers, sessionId ? { sessionId } : "skip");
   const assignCard = useMutation(api.game.assignCard);
   const advancePhase = useMutation(api.game.advancePhase);
@@ -115,34 +117,34 @@ export default function FacSetupScreen() {
             </div>
             <div
               className="card-modal-accent"
-              style={{ background: CARDS[expandedCard].color }}
+              style={{ background: themedCards[expandedCard].color }}
             />
             <div className="card-modal-body">
-              <div className="card-modal-icon"><CardIcon icon={CARDS[expandedCard].icon} size={52} /></div>
+              <div className="card-modal-icon"><CardIcon icon={themedCards[expandedCard].icon} size={52} /></div>
               <div
                 className="card-modal-title"
-                style={{ color: CARDS[expandedCard].color }}
+                style={{ color: themedCards[expandedCard].color }}
               >
-                {CARDS[expandedCard].title}
+                {themedCards[expandedCard].title}
               </div>
               <div className="card-modal-section">
                 <div className="card-modal-section-lbl">SHAPE CONSTRAINT</div>
-                <div className="card-modal-rule">{CARDS[expandedCard].shapeHint}</div>
+                <div className="card-modal-rule">{themedCards[expandedCard].shapeHint}</div>
               </div>
               <div className="card-modal-section">
                 <div className="card-modal-section-lbl">MAP PLACEMENT</div>
-                <div className="card-modal-rule">{CARDS[expandedCard].mapRule}</div>
+                <div className="card-modal-rule">{themedCards[expandedCard].mapRule}</div>
               </div>
               <div className="card-modal-section">
                 <div className="card-modal-section-lbl" style={{ color: "var(--acc2)" }}>
-                  BUILD TIME: {CARDS[expandedCard].buildTime} MINUTES
+                  BUILD TIME: {themedCards[expandedCard].buildTime} MINUTES
                 </div>
               </div>
               <div className="card-modal-section">
                 <div className="card-modal-section-lbl card-modal-hr-lbl">
                   HR INSIGHT
                 </div>
-                <div className="card-modal-hr">{CARDS[expandedCard].hrNote}</div>
+                <div className="card-modal-hr">{themedCards[expandedCard].hrNote}</div>
               </div>
               <div className="card-modal-hint">
                 {takenCardIndices.has(expandedCard)
@@ -202,9 +204,9 @@ export default function FacSetupScreen() {
               {nonFac.map((p) => {
                 const pendingCard = pendingAssignments[p._id];
                 const assignedCard =
-                  p.cardSent && p.cardIndex != null ? CARDS[p.cardIndex] : null;
+                  p.cardSent && p.cardIndex != null ? themedCards[p.cardIndex] : null;
                 const pendingCardData =
-                  pendingCard != null ? CARDS[pendingCard] : null;
+                  pendingCard != null ? themedCards[pendingCard] : null;
                 const isTargeted =
                   assignMode.step === "player_selected" &&
                   assignMode.playerId === p._id;
@@ -318,8 +320,10 @@ export default function FacSetupScreen() {
             </div>
           </div>
           <div className="fac-card-grid">
-            {CARDS.map((c, i) => {
+            {themedCards.map((c, i) => {
               const taken = takenCardIndices.has(i);
+              const tooFewPlayers = c.minPlayers > nonFac.length;
+              const unavailable = taken || tooFewPlayers;
               const isSelected =
                 assignMode.step === "card_selected" &&
                 assignMode.cardIndex === i;
@@ -327,11 +331,11 @@ export default function FacSetupScreen() {
               return (
                 <div
                   key={c.id}
-                  className={`fac-card${taken ? " taken" : ""}${isSelected ? " selected" : ""}`}
+                  className={`fac-card${unavailable ? " taken" : ""}${isSelected ? " selected" : ""}`}
                   style={{
                     "--card-color": c.color,
                   } as React.CSSProperties}
-                  onClick={() => !taken && handleCardTap(i)}
+                  onClick={() => !unavailable && handleCardTap(i)}
                 >
                   <div
                     className="fac-card-top"
@@ -344,6 +348,7 @@ export default function FacSetupScreen() {
                     </div>
                     <div className="fac-card-icon"><CardIcon icon={c.icon} size={42} /></div>
                     {taken && <div className="fac-card-taken-overlay">ASSIGNED</div>}
+                    {!taken && tooFewPlayers && <div className="fac-card-taken-overlay">NEEDS {c.minPlayers}+ PLAYERS</div>}
                     {isSelected && (
                       <div className="fac-card-selected-ring" />
                     )}
@@ -356,6 +361,15 @@ export default function FacSetupScreen() {
                       <span style={{ opacity: 0.4 }}>&middot;</span>
                       <span>{c.shape.replace("-", " ")}</span>
                     </div>
+                    <button
+                      className="fac-card-expand"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setExpandedCard(i);
+                      }}
+                    >
+                      VIEW DETAILS
+                    </button>
                   </div>
                 </div>
               );

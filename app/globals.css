@@ -800,14 +800,14 @@ html,body{width:100%;min-height:100vh;font-family:'Nunito',sans-serif;overflow-x
   pointer-events:none
 }
 .timer-studs{display:flex;gap:8px;justify-content:center;margin-bottom:12px;position:relative;z-index:1}
-.timer-progress-ring{position:relative;width:180px;height:180px;margin:0 auto}
+.timer-progress-ring{position:relative;width:220px;height:220px;margin:0 auto}
 .timer-progress-ring svg{width:100%;height:100%;transform:rotate(-90deg)}
-.timer-progress-ring .ring-bg{fill:none;stroke:rgba(255,255,255,.06);stroke-width:4}
-.timer-progress-ring .ring-fg{fill:none;stroke:var(--acc1);stroke-width:4;stroke-linecap:round;transition:stroke-dashoffset 1s linear,stroke .5s}
+.timer-progress-ring .ring-bg{fill:none;stroke:rgba(255,255,255,.06);stroke-width:3}
+.timer-progress-ring .ring-fg{fill:none;stroke:var(--acc1);stroke-width:3;stroke-linecap:round;transition:stroke-dashoffset 1s linear,stroke .5s}
 .timer-progress-ring .ring-fg.urgent{stroke:var(--acc3)}
 .timer-progress-ring .timer-value{
   position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-  font-family:'Black Han Sans',sans-serif;font-size:52px;letter-spacing:4px;
+  font-family:'Black Han Sans',sans-serif;font-size:46px;letter-spacing:4px;
   color:var(--acc1);text-shadow:0 3px 0 rgba(0,0,0,.4);line-height:1;
   transition:color .5s
 }

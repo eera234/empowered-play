@@ -2,6 +2,13 @@
 
 // ── Scenarios ──────────────────────────────────────────────
 
+export interface CardOverride {
+  title: string;
+  icon?: string;       // themed icon ID for CardIcon (falls back to base if not set)
+  shapeHint: string;
+  mapClue: string;
+}
+
 export interface Scenario {
   id: string;
   title: string;
@@ -11,6 +18,12 @@ export interface Scenario {
   briefing: string;
   mapTheme: "water" | "space" | "ocean" | "forest";
   districtNames: Record<number, string>; // cardId → scenario-specific name
+  cardOverrides?: Record<number, CardOverride>; // cardId → themed card text
+  terminology: {
+    district: string;   // what a player's build is called
+    zone: string;       // what a map area is called
+    map: string;        // what the map is called
+  };
 }
 
 export const SCENARIOS: Scenario[] = [
@@ -23,6 +36,7 @@ export const SCENARIOS: Scenario[] = [
     briefing:
       "The old city is gone. Swallowed by rising waters. Your team are the architects of what comes next. Each of you builds one district of the new city. But you each carry a sealed constraint that shapes how you build. Nobody knows anyone else's rule.",
     mapTheme: "water",
+    terminology: { district: "district", zone: "zone", map: "city map" },
     districtNames: {
       0: "The Lighthouse",
       1: "The Lowlands",
@@ -41,17 +55,28 @@ export const SCENARIOS: Scenario[] = [
     icon: "\u{1F680}",
     color: "#B388FF",
     briefing:
-      "Earth is behind you. Your crew must construct the last orbital station before the window closes. Each module is designed by one architect under a sealed constraint. The station only works if every module connects.",
+      "Earth is behind you. Your crew must construct the last orbital station before the window closes. Each module is designed by one engineer under a sealed constraint. The station only works if every module connects.",
     mapTheme: "space",
+    terminology: { district: "module", zone: "bay", map: "station" },
     districtNames: {
-      0: "The Signal Tower",
-      1: "The Solar Array",
-      2: "The Shield Bay",
-      3: "The Docking Arm",
-      4: "The Command Spire",
-      5: "The Commons Deck",
-      6: "The Core Module",
-      7: "The Airlock",
+      0: "Observation Tower",
+      1: "Solar Array",
+      2: "Shield Module",
+      3: "Docking Arm",
+      4: "Command Spire",
+      5: "Commons Deck",
+      6: "Core Reactor",
+      7: "Main Airlock",
+    },
+    cardOverrides: {
+      0: { title: "The Antenna", icon: "antenna", shapeHint: "Build TALL. Your module must reach upward. Signal range depends on height.", mapClue: "Your signal reaches further than anyone. Where you transmit from, others lock on." },
+      1: { title: "The Array", icon: "solar-array", shapeHint: "Build WIDE. Your module must spread flat across the hull. Cover surface, not depth.", mapClue: "The outer hull is yours. You belong where the station meets the void." },
+      2: { title: "The Bulkhead", icon: "bulkhead", shapeHint: "Build ENCLOSED. Your module must seal on all sides. Pressure integrity is everything.", mapClue: "Sealed tight, you need two adjacent modules to maintain pressure." },
+      3: { title: "The Connector", icon: "connector", shapeHint: "Build LONG. Your module is a corridor linking two sections. A passage, not a room.", mapClue: "Without you, the station splits in half. Find the gap between sections." },
+      4: { title: "The Beacon", icon: "nav-beacon", shapeHint: "Build to a POINT. Your module tapers to a spire. Navigation depends on you.", mapClue: "All coordinates originate from you. Find the heart of the station." },
+      5: { title: "The Hub", icon: "hub", shapeHint: "Build OPEN. No sealed walls. Your module is the shared space where crew gathers.", mapClue: "Everyone drifts through you. The more modules around you, the stronger the station." },
+      6: { title: "The Capsule", icon: "capsule", shapeHint: "Build DENSE. Smallest footprint possible. Every component packed tight.", mapClue: "The station must take shape before you slot in. Patience, then precision." },
+      7: { title: "The Hatch", icon: "hatch", shapeHint: "Build a GATEWAY. Your module must have a clear opening. It is the way in and out.", mapClue: "Nothing enters without passing through you. Find where the station opens to space." },
     },
   },
   {
@@ -63,6 +88,7 @@ export const SCENARIOS: Scenario[] = [
     briefing:
       "Three kilometers below the surface, your team is building the first permanent settlement on the ocean floor. Each architect designs one sector under a sealed constraint. Pressure, currents, and darkness make every connection critical.",
     mapTheme: "ocean",
+    terminology: { district: "sector", zone: "zone", map: "seafloor" },
     districtNames: {
       0: "The Coral Spire",
       1: "The Reef Bed",
@@ -83,6 +109,7 @@ export const SCENARIOS: Scenario[] = [
     briefing:
       "The forest offered shelter when everything else fell. Now your team builds a permanent settlement woven into the canopy and roots. Each architect shapes one district under a sealed constraint. The forest connects everything. If you let it.",
     mapTheme: "forest",
+    terminology: { district: "outpost", zone: "clearing", map: "canopy" },
     districtNames: {
       0: "The Canopy",
       1: "The Undergrowth",
@@ -95,6 +122,13 @@ export const SCENARIOS: Scenario[] = [
     },
   },
 ];
+
+// Helper: get themed card for a scenario (applies cardOverrides if present)
+export function getThemedCard(card: Card, scenario: Scenario): Card {
+  const override = scenario.cardOverrides?.[card.id];
+  if (!override) return card;
+  return { ...card, title: override.title, icon: override.icon || card.icon, shapeHint: override.shapeHint, mapClue: override.mapClue };
+}
 
 // ── Constraint Cards ───────────────────────────────────────
 
@@ -110,6 +144,7 @@ export interface Card {
   mapClue: string;        // placement hint — cryptic version for players
   hrNote: string;         // facilitator-only guidance
   empowermentLevel: "high" | "medium" | "low"; // helps HR assign strategically
+  minPlayers: number;     // minimum players needed for this card to work
 }
 
 export const CARDS: Card[] = [
@@ -125,6 +160,7 @@ export const CARDS: Card[] = [
     mapClue: "You see further than most. Where you stand, others grow stronger.",
     hrNote: "Places anywhere and strengthens whoever is next to them. A supportive, high-impact role.",
     empowermentLevel: "high",
+    minPlayers: 1,
   },
   {
     id: 1,
@@ -138,6 +174,7 @@ export const CARDS: Card[] = [
     mapClue: "The margins are yours. You belong where the city meets the horizon.",
     hrNote: "Restricted to the edges with less build time. This player has to fit around others, not lead.",
     empowermentLevel: "low",
+    minPlayers: 1,
   },
   {
     id: 2,
@@ -151,6 +188,7 @@ export const CARDS: Card[] = [
     mapClue: "Walls mean nothing without neighbours. You need at least two allies nearby.",
     hrNote: "Can't place alone. Needs two neighbours first, so this player has to talk to the team early.",
     empowermentLevel: "medium",
+    minPlayers: 3,
   },
   {
     id: 3,
@@ -164,6 +202,7 @@ export const CARDS: Card[] = [
     mapClue: "Without you, the city splits in two. Find the gap and fill it.",
     hrNote: "Connects two separate groups on the map. Without this player, the city stays divided.",
     empowermentLevel: "high",
+    minPlayers: 3,
   },
   {
     id: 4,
@@ -177,6 +216,7 @@ export const CARDS: Card[] = [
     mapClue: "Everything radiates from you. Find the heart of the city.",
     hrNote: "Locked to the centre. Every other player has to position themselves around this person.",
     empowermentLevel: "high",
+    minPlayers: 1,
   },
   {
     id: 5,
@@ -190,6 +230,7 @@ export const CARDS: Card[] = [
     mapClue: "Everyone passes through you. The more surrounded you are, the stronger you become.",
     hrNote: "Needs three neighbours before placing. This player can't go early and has to react to the group.",
     empowermentLevel: "low",
+    minPlayers: 4,
   },
   {
     id: 6,
@@ -203,6 +244,7 @@ export const CARDS: Card[] = [
     mapClue: "Patience is your power. The city must take shape before you reveal your place in it.",
     hrNote: "Locked out until four others have placed. This player watches, then fills whatever gap remains.",
     empowermentLevel: "medium",
+    minPlayers: 5,
   },
   {
     id: 7,
@@ -216,6 +258,7 @@ export const CARDS: Card[] = [
     mapClue: "Nothing enters without passing through you. Find where the city begins.",
     hrNote: "Only fits at a gateway. This player decides where the city's entrance is.",
     empowermentLevel: "high",
+    minPlayers: 1,
   },
 ];
 

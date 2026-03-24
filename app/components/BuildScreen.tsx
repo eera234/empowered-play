@@ -72,7 +72,7 @@ export default function BuildScreen() {
               {m}:{s < 10 ? "0" : ""}{s}
             </div>
           </div>
-          <div className="timer-sub" style={{ marginTop: 12 }}>BUILD IN ISOLATION &mdash; YOUR SHAPE IS YOUR RULE</div>
+          <div className="timer-sub" style={{ marginTop: 12 }}>BUILD ALONE. FOLLOW YOUR SHAPE.</div>
         </div>
 
         <div className="rules-grid">

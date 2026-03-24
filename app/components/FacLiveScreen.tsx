@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { useGame } from "../GameContext";
 import BrandBar from "./BrandBar";
 import WaterMap from "./maps/WaterMap";
+import SpaceMap from "./maps/SpaceMap";
 import VoiceRecorder from "./VoiceRecorder";
 import CardIcon from "./CardIcon";
 
@@ -176,18 +177,25 @@ export default function FacLiveScreen() {
         <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
           {/* Map area */}
           <div style={{ flex: 1, position: "relative", overflow: "hidden", background: "var(--bg0)" }}>
-            <WaterMap slots={[]} occupiedSlotIds={new Set()} />
+            {scenarioData.mapTheme === "water" && <WaterMap slots={[]} occupiedSlotIds={new Set()} />}
+            {scenarioData.mapTheme === "space" && <SpaceMap slots={[]} occupiedSlotIds={new Set()} />}
+            {scenarioData.mapTheme !== "water" && scenarioData.mapTheme !== "space" && (
+              <div className="map-img-wrap"><div style={{ background: "var(--bg0)", width: "100%", height: "100%" }} /></div>
+            )}
             {/* District cards on map (read-only, not draggable) */}
             {nonFac.filter((p) => p.uploaded).map((p) => {
               const card = p.cardIndex != null ? CARDS[p.cardIndex] : null;
               const distName = card ? scenarioData.districtNames[card.id] : p.districtName;
+              // Position using slot percentage data saved in x/y when slotId exists
+              const hasSlot = p.slotId && p.x != null && p.y != null;
               return (
                 <div
                   key={p._id}
                   className="dist-card"
                   style={{
-                    left: p.slotId ? undefined : (p.x ?? 100) + "px",
-                    top: p.slotId ? undefined : (p.y ?? 100) + "px",
+                    left: hasSlot ? p.x + "%" : (p.x ?? 50) + "px",
+                    top: hasSlot ? p.y + "%" : (p.y ?? 50) + "px",
+                    transform: hasSlot ? "translate(-50%, -50%)" : undefined,
                     borderColor: card ? card.color + "66" : undefined,
                     cursor: "default",
                   }}

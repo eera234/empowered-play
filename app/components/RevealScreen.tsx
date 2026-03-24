@@ -3,14 +3,16 @@
 import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { CARDS } from "../../lib/constants";
+import { CARDS, SCENARIOS, getThemedCard } from "../../lib/constants";
 import { useGame } from "../GameContext";
 import BrandBar from "./BrandBar";
 import PhaseBar from "./PhaseBar";
 import CardIcon from "./CardIcon";
 
 export default function RevealScreen() {
-  const { sessionId, goTo } = useGame();
+  const { sessionId, sessionCode, scenario, goTo } = useGame();
+  const session = useQuery(api.game.getSession, sessionCode ? { code: sessionCode } : "skip");
+  const scenarioData = SCENARIOS.find((s) => s.id === (scenario || session?.scenario)) || SCENARIOS[0];
   const players = useQuery(api.game.getPlayers, sessionId ? { sessionId } : "skip");
   const [openIdx, setOpenIdx] = useState<number | null>(null);
 
@@ -33,7 +35,8 @@ export default function RevealScreen() {
         </div>
         <div className="rev-cards">
           {nonFac.map((p, i) => {
-            const card = p.cardIndex != null ? CARDS[p.cardIndex] : null;
+            const baseCard = p.cardIndex != null ? CARDS[p.cardIndex] : null;
+            const card = baseCard ? getThemedCard(baseCard, scenarioData) : null;
             const isOpen = openIdx === i;
             return (
               <div

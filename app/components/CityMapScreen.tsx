@@ -4,12 +4,13 @@ import { useState, useRef, useEffect, useCallback, MouseEvent, TouchEvent } from
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
-import { CARDS, SCENARIOS, WIN_CONDITIONS } from "../../lib/constants";
+import { CARDS, SCENARIOS, WIN_CONDITIONS, getThemedCard } from "../../lib/constants";
 import { toast } from "sonner";
 import { useGame } from "../GameContext";
 import BrandBar from "./BrandBar";
 import VoiceRecorder from "./VoiceRecorder";
 import WaterMap from "./maps/WaterMap";
+import SpaceMap from "./maps/SpaceMap";
 
 interface DragState {
   el: HTMLElement | null;
@@ -46,15 +47,15 @@ const PLACEMENT_SLOTS: Record<string, PlacementSlot[]> = {
   ],
   // Other themes reuse same layout for now
   space: [
-    { id: "west-commercial",  x: 8,  y: 25, label: "Port Module",    adjacent: ["center", "north-residential"], zoneType: "edge" },
-    { id: "north-residential",x: 30, y: 10, label: "Crew Quarters",   adjacent: ["west-commercial", "center", "park"], zoneType: "interior" },
-    { id: "center",           x: 45, y: 30, label: "Command Hub",     adjacent: ["north-residential", "west-commercial", "east-district", "south-bridge"], zoneType: "center" },
-    { id: "east-district",    x: 62, y: 18, label: "Science Wing",    adjacent: ["center", "park", "harbor"], zoneType: "interior" },
-    { id: "park",             x: 82, y: 8,  label: "Bio Dome",        adjacent: ["north-residential", "east-district"], zoneType: "edge" },
-    { id: "south-bridge",     x: 35, y: 55, label: "Docking Bridge",  adjacent: ["center", "construction", "industrial"], zoneType: "gateway" },
-    { id: "construction",     x: 10, y: 65, label: "Assembly Bay",    adjacent: ["south-bridge", "industrial"], zoneType: "edge" },
-    { id: "industrial",       x: 45, y: 72, label: "Engine Room",     adjacent: ["south-bridge", "construction", "harbor"], zoneType: "interior" },
-    { id: "harbor",           x: 75, y: 65, label: "Airlock",         adjacent: ["east-district", "industrial"], zoneType: "gateway" },
+    { id: "west-commercial",  x: 8,  y: 20, label: "Port Module",    adjacent: ["center", "north-residential", "south-bridge"], zoneType: "edge" },
+    { id: "north-residential",x: 30, y: 8,  label: "Crew Quarters",   adjacent: ["west-commercial", "center", "east-district", "park"], zoneType: "interior" },
+    { id: "center",           x: 50, y: 38, label: "Command Hub",     adjacent: ["north-residential", "west-commercial", "east-district", "south-bridge"], zoneType: "center" },
+    { id: "east-district",    x: 65, y: 15, label: "Science Wing",    adjacent: ["center", "north-residential", "park", "harbor"], zoneType: "interior" },
+    { id: "park",             x: 85, y: 8,  label: "Bio Dome",        adjacent: ["north-residential", "east-district"], zoneType: "edge" },
+    { id: "south-bridge",     x: 28, y: 55, label: "Docking Bridge",  adjacent: ["center", "west-commercial", "construction", "industrial"], zoneType: "gateway" },
+    { id: "construction",     x: 10, y: 68, label: "Assembly Bay",    adjacent: ["south-bridge", "industrial"], zoneType: "edge" },
+    { id: "industrial",       x: 48, y: 70, label: "Engine Room",     adjacent: ["south-bridge", "construction", "harbor"], zoneType: "interior" },
+    { id: "harbor",           x: 78, y: 65, label: "Airlock",         adjacent: ["east-district", "industrial"], zoneType: "gateway" },
   ],
   ocean: [
     { id: "west-commercial",  x: 8,  y: 25, label: "Kelp Farm",      adjacent: ["center", "north-residential"], zoneType: "edge" },
@@ -738,11 +739,11 @@ export default function CityMapScreen() {
   const prevMsgCountRef = useRef(0);
   const chatMsgsRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{ off: { x: number; y: number }; dragging: boolean; pId: Id<"players"> | null }>({ off: { x: 0, y: 0 }, dragging: false, pId: null });
+  const dragRef = useRef<{ off: { x: number; y: number }; dragging: boolean; pId: Id<"players"> | null; el: HTMLElement | null }>({ off: { x: 0, y: 0 }, dragging: false, pId: null, el: null });
   const [chatInput, setChatInput] = useState("");
   const [showConditions, setShowConditions] = useState(false);
-  const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
   const [draggingId, setDraggingId] = useState<Id<"players"> | null>(null);
+  const [dragVersion, setDragVersion] = useState(0);
 
   const scenarioData = SCENARIOS.find((s) => s.id === (scenario || session?.scenario)) || SCENARIOS[0];
   const mapTheme = scenarioData.mapTheme;
@@ -769,16 +770,27 @@ export default function CityMapScreen() {
     slots
   );
 
-  // Drag handlers — use React state, not DOM manipulation
+  // Drag handlers — DOM manipulation during drag for performance, React state for final position
   function startDrag(e: MouseEvent | TouchEvent, pId: Id<"players">) {
     if (pId !== playerId) return;
     e.preventDefault();
     const el = e.currentTarget as HTMLElement;
     const r = el.getBoundingClientRect();
+    const mapRect = mapRef.current?.getBoundingClientRect();
+    if (!mapRect) return;
     const touch = "touches" in e ? e.touches[0] : e;
-    dragRef.current = { off: { x: touch.clientX - r.left, y: touch.clientY - r.top }, dragging: true, pId };
+    // Calculate where the card actually is in the map, then set as px
+    const currentLeft = r.left - mapRect.left;
+    const currentTop = r.top - mapRect.top;
+    // Switch from % to px positioning and remove transform
+    el.style.left = currentLeft + "px";
+    el.style.top = currentTop + "px";
+    el.style.transform = "none";
+    el.style.transition = "none";
+    el.style.zIndex = "100";
+    el.classList.add("dragging");
+    dragRef.current = { off: { x: touch.clientX - r.left, y: touch.clientY - r.top }, dragging: true, pId, el };
     setDraggingId(pId);
-    setDragPos({ x: r.left - (mapRef.current?.getBoundingClientRect().left || 0), y: r.top - (mapRef.current?.getBoundingClientRect().top || 0) });
     document.addEventListener("mousemove", onDragMove);
     document.addEventListener("mouseup", onDragEnd);
     document.addEventListener("touchmove", onDragMove, { passive: false });
@@ -787,13 +799,15 @@ export default function CityMapScreen() {
 
   function onDragMove(e: globalThis.MouseEvent | globalThis.TouchEvent) {
     const d = dragRef.current;
-    if (!d.dragging || !mapRef.current) return;
+    if (!d.dragging || !d.el || !mapRef.current) return;
     if ("touches" in e) e.preventDefault();
     const touch = "touches" in e ? e.touches[0] : e;
     const ar = mapRef.current.getBoundingClientRect();
     const x = Math.max(0, Math.min(ar.width - 120, touch.clientX - ar.left - d.off.x));
     const y = Math.max(0, Math.min(ar.height - 120, touch.clientY - ar.top - d.off.y));
-    setDragPos({ x, y });
+    // Direct DOM — no React re-render, instant response
+    d.el.style.left = x + "px";
+    d.el.style.top = y + "px";
   }
 
   // Convert percentage slot position to pixel position in map area
@@ -850,13 +864,13 @@ export default function CityMapScreen() {
 
   function onDragEnd() {
     const d = dragRef.current;
-    if (!d.dragging || !d.pId || !dragPos) {
+    if (!d.dragging || !d.pId || !d.el) {
       setDraggingId(null);
-      setDragPos(null);
       return;
     }
-    const rawX = dragPos.x;
-    const rawY = dragPos.y;
+    d.el.classList.remove("dragging");
+    const rawX = parseFloat(d.el.style.left) || 0;
+    const rawY = parseFloat(d.el.style.top) || 0;
 
     // Get this player's card
     const me = nonFac.find((p) => p._id === d.pId);
@@ -891,15 +905,30 @@ export default function CityMapScreen() {
     if (!bestSlot && sorted.length > 0) {
       const check = isValidPlacement(myCard, sorted[0].slot, placedCount);
       toast(check.reason || "No valid zone available for your card");
-      // Position will reset to Convex data on next render
+      // Snap back — restore the previous slot position or reset
+      if (me?.slotId) {
+        const prevSlot = slots.find((s) => s.id === me.slotId);
+        if (prevSlot && d.el) {
+          d.el.style.left = prevSlot.x + "%";
+          d.el.style.top = prevSlot.y + "%";
+        }
+      }
     } else if (bestSlot) {
+      // Snap to slot — set DOM position immediately, then save to Convex
+      if (d.el) {
+        d.el.style.left = bestSlot.x + "%";
+        d.el.style.top = bestSlot.y + "%";
+      }
       moveDistrict({ playerId: d.pId, x: bestSlot.x, y: bestSlot.y, slotId: bestSlot.id });
     }
 
-    // Clean up — React state handles positioning from here
+    // Clear all inline styles so React reasserts control on next render
+    if (d.el) {
+      d.el.removeAttribute("style");
+    }
     setDraggingId(null);
-    setDragPos(null);
-    dragRef.current = { off: { x: 0, y: 0 }, dragging: false, pId: null };
+    setDragVersion((v) => v + 1); // force re-render to reapply React styles
+    dragRef.current = { off: { x: 0, y: 0 }, dragging: false, pId: null, el: null };
     document.removeEventListener("mousemove", onDragMove);
     document.removeEventListener("mouseup", onDragEnd);
     document.removeEventListener("touchmove", onDragMove);
@@ -987,11 +1016,9 @@ export default function CityMapScreen() {
         </div>
 
         <div className="map-area" ref={mapRef}>
-          {mapTheme === "water" ? (
-            <WaterMap slots={slots} occupiedSlotIds={occupiedSlotIds} />
-          ) : (
-            <MapBackdrop theme={mapTheme} />
-          )}
+          {mapTheme === "water" && <WaterMap slots={slots} occupiedSlotIds={occupiedSlotIds} />}
+          {mapTheme === "space" && <SpaceMap slots={slots} occupiedSlotIds={occupiedSlotIds} />}
+          {mapTheme !== "water" && mapTheme !== "space" && <MapBackdrop theme={mapTheme} />}
 
           {/* Slot indicators — show available zones */}
           {slots.map((slot) => {
@@ -1042,12 +1069,10 @@ export default function CityMapScreen() {
             const isBeingDragged = draggingId === p._id;
             const slotData = p.slotId ? slots.find((s) => s.id === p.slotId) : null;
 
-            // Position: if currently being dragged, use dragPos (pixels).
-            // Otherwise use slot percentage or fallback pixel position from Convex.
+            // Position: during drag, DOM handles it directly.
+            // Otherwise use slot percentage or fallback.
             let posStyle: React.CSSProperties;
-            if (isBeingDragged && dragPos) {
-              posStyle = { left: dragPos.x + "px", top: dragPos.y + "px" };
-            } else if (slotData) {
+            if (slotData) {
               posStyle = { left: slotData.x + "%", top: slotData.y + "%" };
             } else {
               posStyle = { left: (p.x ?? 10) + "%", top: (p.y ?? 10) + "%" };
@@ -1055,13 +1080,12 @@ export default function CityMapScreen() {
 
             return (
               <div
-                key={p._id}
-                className={`dist-card${isMe ? " mine" : ""}${isBeingDragged ? " dragging" : ""}`}
+                key={isMe ? `${p._id}-${dragVersion}` : p._id}
+                className={`dist-card${isMe ? " mine" : ""}`}
                 style={{
                   ...posStyle,
                   borderColor: card ? card.color + "66" : undefined,
-                  zIndex: isBeingDragged ? 100 : 10,
-                  transition: isBeingDragged ? "none" : "left .3s, top .3s",
+                  transform: "translate(-50%, -50%)",
                 }}
                 onMouseDown={(e) => startDrag(e, p._id)}
                 onTouchStart={(e) => startDrag(e, p._id)}
@@ -1084,13 +1108,15 @@ export default function CityMapScreen() {
           <div className="map-bottom-status">
             {nonFac.length} district{nonFac.length !== 1 ? "s" : ""} placed
           </div>
-          <button
-            className={`lb ${cityComplete ? "lb-yellow" : "lb-ghost"}`}
-            disabled={!cityComplete && role !== "facilitator"}
-            onClick={() => goTo("s-debrief")}
-          >
-            {cityComplete ? "CITY COMPLETE \u2014 BEGIN DEBRIEF \u2192" : "BUILD THE CITY (75% NEEDED)"}
-          </button>
+          {role === "facilitator" ? (
+            <div style={{ fontSize: 11, color: "var(--textd)" }}>
+              Use the dashboard tab to advance when ready
+            </div>
+          ) : (
+            <div style={{ fontSize: 11, color: "var(--textd)" }}>
+              {cityComplete ? "City complete. Waiting for facilitator to start debrief." : "Collaborate with your team to place all districts."}
+            </div>
+          )}
         </div>
       </div>
 
