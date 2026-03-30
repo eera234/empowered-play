@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useCallback, ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from "react";
 import { Id } from "../convex/_generated/dataModel";
 
 interface CardData {
@@ -35,6 +35,59 @@ interface GameContextValue extends GameState {
   goTo: (screen: string) => void;
 }
 
+const STORAGE_KEY = "empowered-play-session";
+
+// Fields to persist (not photo or card — those come from Convex)
+interface PersistedData {
+  role: "player" | "facilitator" | null;
+  name: string;
+  sessionCode: string;
+  sessionId: string | null;
+  playerId: string | null;
+  scenario: string;
+}
+
+function loadFromStorage(): Partial<GameState> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return {};
+    const data: PersistedData = JSON.parse(raw);
+    if (!data.sessionCode || !data.playerId) return {};
+    return {
+      role: data.role,
+      name: data.name,
+      sessionCode: data.sessionCode,
+      sessionId: data.sessionId as Id<"sessions"> | null,
+      playerId: data.playerId as Id<"players"> | null,
+      scenario: data.scenario || "",
+    };
+  } catch {
+    return {};
+  }
+}
+
+function saveToStorage(state: GameState) {
+  if (typeof window === "undefined") return;
+  try {
+    if (!state.sessionCode || !state.playerId) {
+      localStorage.removeItem(STORAGE_KEY);
+      return;
+    }
+    const data: PersistedData = {
+      role: state.role,
+      name: state.name,
+      sessionCode: state.sessionCode,
+      sessionId: state.sessionId,
+      playerId: state.playerId,
+      scenario: state.scenario,
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  } catch {
+    // localStorage not available
+  }
+}
+
 const GameContext = createContext<GameContextValue | null>(null);
 
 export function GameProvider({ children }: { children: ReactNode }) {
@@ -50,6 +103,31 @@ export function GameProvider({ children }: { children: ReactNode }) {
     distName: "",
     scenario: "",
   });
+
+  // Restore from localStorage AFTER hydration to avoid mismatch
+  const [restored, setRestored] = useState(false);
+  useEffect(() => {
+    if (restored) return;
+    const persisted = loadFromStorage();
+    if (persisted.playerId) {
+      setState((prev) => ({
+        ...prev,
+        role: persisted.role ?? null,
+        name: persisted.name ?? "",
+        sessionCode: persisted.sessionCode ?? "",
+        sessionId: persisted.sessionId ?? null,
+        playerId: persisted.playerId ?? null,
+        screen: "s-wait",
+        scenario: persisted.scenario ?? "",
+      }));
+    }
+    setRestored(true);
+  }, [restored]);
+
+  // Persist whenever key fields change
+  useEffect(() => {
+    saveToStorage(state);
+  }, [state.sessionCode, state.playerId, state.role, state.name, state.scenario]);
 
   const set = useCallback((updates: Partial<GameState>) => {
     setState((prev) => ({ ...prev, ...updates }));

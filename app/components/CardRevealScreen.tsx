@@ -92,17 +92,12 @@ export default function CardRevealScreen() {
             <div className="crd-accent" style={{ background: card.color }} />
             <div className="crd-body-inner">
               <div className="crd-lbl" style={{ color: card.color }}>
-                YOUR CONSTRAINT &mdash; READ ONLY
+                YOUR CONSTRAINT
               </div>
               <div className="crd-icon-big" style={{ color: card.color }}><CardIcon icon={card.icon} size={48} /></div>
               <div className="crd-title" style={{ color: card.color }}>
-                {card.title}
+                {districtName || card.title}
               </div>
-              {districtName && (
-                <div className="crd-district-name">
-                  Your {termDistrict}: <strong>{districtName}</strong>
-                </div>
-              )}
               <div className="crd-rule">{card.shapeHint}</div>
               <div className="crd-rule" style={{ marginTop: 10, fontStyle: "italic", opacity: 0.7 }}>
                 &ldquo;{card.mapClue}&rdquo;

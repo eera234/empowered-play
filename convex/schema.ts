@@ -14,6 +14,7 @@ export default defineSchema({
     cardIndex: v.optional(v.number()),
     cardSent: v.boolean(),
     cardRead: v.optional(v.boolean()),
+    scenarioVote: v.optional(v.string()),
     uploaded: v.boolean(),
     districtName: v.optional(v.string()),
     photoDataUrl: v.optional(v.string()),

@@ -11,6 +11,7 @@ import BrandBar from "./BrandBar";
 import VoiceRecorder from "./VoiceRecorder";
 import WaterMap from "./maps/WaterMap";
 import SpaceMap from "./maps/SpaceMap";
+import OceanMap from "./maps/OceanMap";
 
 interface DragState {
   el: HTMLElement | null;
@@ -58,14 +59,14 @@ const PLACEMENT_SLOTS: Record<string, PlacementSlot[]> = {
     { id: "harbor",           x: 78, y: 65, label: "Airlock",         adjacent: ["east-district", "industrial"], zoneType: "gateway" },
   ],
   ocean: [
-    { id: "west-commercial",  x: 8,  y: 25, label: "Kelp Farm",      adjacent: ["center", "north-residential"], zoneType: "edge" },
-    { id: "north-residential",x: 30, y: 10, label: "Shallow Pods",    adjacent: ["west-commercial", "center", "park"], zoneType: "interior" },
-    { id: "center",           x: 45, y: 30, label: "Thermal Core",    adjacent: ["north-residential", "west-commercial", "east-district", "south-bridge"], zoneType: "center" },
-    { id: "east-district",    x: 62, y: 18, label: "Coral Ridge",     adjacent: ["center", "park", "harbor"], zoneType: "interior" },
-    { id: "park",             x: 82, y: 8,  label: "Bio Garden",      adjacent: ["north-residential", "east-district"], zoneType: "edge" },
-    { id: "south-bridge",     x: 35, y: 55, label: "Current Channel", adjacent: ["center", "construction", "industrial"], zoneType: "gateway" },
-    { id: "construction",     x: 10, y: 65, label: "Pressure Lab",    adjacent: ["south-bridge", "industrial"], zoneType: "edge" },
-    { id: "industrial",       x: 45, y: 72, label: "Deep Works",      adjacent: ["south-bridge", "construction", "harbor"], zoneType: "interior" },
+    { id: "west-commercial",  x: 8,  y: 18, label: "Kelp Farm",      adjacent: ["center", "north-residential", "south-bridge"], zoneType: "edge" },
+    { id: "north-residential",x: 28, y: 10, label: "Shallow Pods",    adjacent: ["west-commercial", "center", "east-district", "park"], zoneType: "interior" },
+    { id: "center",           x: 48, y: 30, label: "Thermal Core",    adjacent: ["north-residential", "west-commercial", "east-district", "south-bridge"], zoneType: "center" },
+    { id: "east-district",    x: 65, y: 12, label: "Coral Ridge",     adjacent: ["center", "north-residential", "park", "harbor"], zoneType: "interior" },
+    { id: "park",             x: 88, y: 15, label: "Bio Garden",      adjacent: ["north-residential", "east-district"], zoneType: "edge" },
+    { id: "south-bridge",     x: 28, y: 52, label: "Current Channel", adjacent: ["center", "west-commercial", "construction", "industrial"], zoneType: "gateway" },
+    { id: "construction",     x: 10, y: 68, label: "Pressure Lab",    adjacent: ["south-bridge", "industrial"], zoneType: "edge" },
+    { id: "industrial",       x: 42, y: 72, label: "Deep Works",      adjacent: ["south-bridge", "construction", "harbor"], zoneType: "interior" },
     { id: "harbor",           x: 75, y: 65, label: "Submarine Bay",   adjacent: ["east-district", "industrial"], zoneType: "gateway" },
   ],
   forest: [
@@ -739,11 +740,10 @@ export default function CityMapScreen() {
   const prevMsgCountRef = useRef(0);
   const chatMsgsRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{ off: { x: number; y: number }; dragging: boolean; pId: Id<"players"> | null; el: HTMLElement | null }>({ off: { x: 0, y: 0 }, dragging: false, pId: null, el: null });
+  // No dragRef needed — drag state is captured in startDrag closure
   const [chatInput, setChatInput] = useState("");
   const [showConditions, setShowConditions] = useState(false);
-  const [draggingId, setDraggingId] = useState<Id<"players"> | null>(null);
-  const [dragVersion, setDragVersion] = useState(0);
+  const [dragPos, setDragPos] = useState<{ id: string; x: number; y: number } | null>(null);
 
   const scenarioData = SCENARIOS.find((s) => s.id === (scenario || session?.scenario)) || SCENARIOS[0];
   const mapTheme = scenarioData.mapTheme;
@@ -770,54 +770,93 @@ export default function CityMapScreen() {
     slots
   );
 
-  // Drag handlers — DOM manipulation during drag for performance, React state for final position
+  // Drag handlers — all positions in percentages
+  // Handlers are defined INSIDE startDrag so document listeners point to stable references
   function startDrag(e: MouseEvent | TouchEvent, pId: Id<"players">) {
     if (pId !== playerId) return;
     e.preventDefault();
-    const el = e.currentTarget as HTMLElement;
-    const r = el.getBoundingClientRect();
-    const mapRect = mapRef.current?.getBoundingClientRect();
-    if (!mapRect) return;
-    const touch = "touches" in e ? e.touches[0] : e;
-    // Calculate where the card actually is in the map, then set as px
-    const currentLeft = r.left - mapRect.left;
-    const currentTop = r.top - mapRect.top;
-    // Switch from % to px positioning and remove transform
-    el.style.left = currentLeft + "px";
-    el.style.top = currentTop + "px";
-    el.style.transform = "none";
-    el.style.transition = "none";
-    el.style.zIndex = "100";
-    el.classList.add("dragging");
-    dragRef.current = { off: { x: touch.clientX - r.left, y: touch.clientY - r.top }, dragging: true, pId, el };
-    setDraggingId(pId);
-    document.addEventListener("mousemove", onDragMove);
-    document.addEventListener("mouseup", onDragEnd);
-    document.addEventListener("touchmove", onDragMove, { passive: false });
-    document.addEventListener("touchend", onDragEnd);
-  }
-
-  function onDragMove(e: globalThis.MouseEvent | globalThis.TouchEvent) {
-    const d = dragRef.current;
-    if (!d.dragging || !d.el || !mapRef.current) return;
-    if ("touches" in e) e.preventDefault();
-    const touch = "touches" in e ? e.touches[0] : e;
-    const ar = mapRef.current.getBoundingClientRect();
-    const x = Math.max(0, Math.min(ar.width - 120, touch.clientX - ar.left - d.off.x));
-    const y = Math.max(0, Math.min(ar.height - 120, touch.clientY - ar.top - d.off.y));
-    // Direct DOM — no React re-render, instant response
-    d.el.style.left = x + "px";
-    d.el.style.top = y + "px";
-  }
-
-  // Convert percentage slot position to pixel position in map area
-  function slotToPixel(slot: PlacementSlot): { x: number; y: number } {
+    e.stopPropagation();
     const mapEl = mapRef.current;
-    if (!mapEl) return { x: slot.x * 5, y: slot.y * 4 };
-    return {
-      x: (slot.x / 100) * mapEl.clientWidth,
-      y: (slot.y / 100) * mapEl.clientHeight,
-    };
+    if (!mapEl) return;
+    const mapRect = mapEl.getBoundingClientRect();
+    const touch = "touches" in e ? e.touches[0] : e;
+    const mousePctX = ((touch.clientX - mapRect.left) / mapRect.width) * 100;
+    const mousePctY = ((touch.clientY - mapRect.top) / mapRect.height) * 100;
+    const player = nonFac.find((p) => p._id === pId);
+    const slot = player?.slotId ? slots.find((s) => s.id === player.slotId) : null;
+    const cardPctX = slot ? slot.x : (player?.x ?? 50);
+    const cardPctY = slot ? slot.y : (player?.y ?? 50);
+    const offX = mousePctX - cardPctX;
+    const offY = mousePctY - cardPctY;
+
+    setDragPos({ id: pId, x: cardPctX, y: cardPctY });
+
+    let rafId = 0;
+    let lastPx = cardPctX;
+    let lastPy = cardPctY;
+
+    function move(ev: globalThis.MouseEvent | globalThis.TouchEvent) {
+      if ("touches" in ev) ev.preventDefault();
+      const t = "touches" in ev ? ev.touches[0] : ev;
+      const mr = mapEl!.getBoundingClientRect();
+      lastPx = Math.max(2, Math.min(95, ((t.clientX - mr.left) / mr.width) * 100 - offX));
+      lastPy = Math.max(2, Math.min(92, ((t.clientY - mr.top) / mr.height) * 100 - offY));
+      if (!rafId) {
+        rafId = requestAnimationFrame(() => {
+          setDragPos({ id: pId, x: lastPx, y: lastPy });
+          rafId = 0;
+        });
+      }
+    }
+
+    function up() {
+      if (rafId) cancelAnimationFrame(rafId);
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", up);
+      document.removeEventListener("touchmove", move);
+      document.removeEventListener("touchend", up);
+      handleDrop(pId, lastPx, lastPy);
+      setDragPos(null);
+    }
+
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+    document.addEventListener("touchmove", move, { passive: false });
+    document.addEventListener("touchend", up);
+  }
+
+  // Handle drop — find nearest valid slot and save to Convex
+  function handleDrop(pId: Id<"players">, dropX: number, dropY: number) {
+    const me = nonFac.find((p) => p._id === pId);
+    const myCard = me?.cardIndex != null ? CARDS[me.cardIndex] : null;
+    const placedCount = nonFac.filter((p) => p.slotId && p._id !== pId).length;
+    const currentOccupied = new Set(
+      nonFac.filter((p) => p.slotId && p._id !== pId).map((p) => p.slotId!)
+    );
+    const availableSlots = slots.filter((s) => !currentOccupied.has(s.id));
+
+    // Sort by distance
+    const sorted = availableSlots
+      .map((slot) => ({ slot, dist: Math.sqrt((dropX - slot.x) ** 2 + (dropY - slot.y) ** 2) }))
+      .sort((a, b) => a.dist - b.dist);
+
+    // Find first valid slot
+    let bestSlot: PlacementSlot | null = null;
+    for (const { slot } of sorted) {
+      const check = isValidPlacement(myCard, slot, placedCount);
+      if (check.valid) { bestSlot = slot; break; }
+    }
+
+    if (!bestSlot && sorted.length > 0) {
+      const check = isValidPlacement(myCard, sorted[0].slot, placedCount);
+      toast(check.reason || "No valid zone available");
+    }
+
+    if (bestSlot) {
+      moveDistrict({ playerId: pId, x: bestSlot.x, y: bestSlot.y, slotId: bestSlot.id });
+    } else {
+      moveDistrict({ playerId: pId, x: Math.round(dropX), y: Math.round(dropY) });
+    }
   }
 
   // Check if a card's map rule allows placement in a zone
@@ -862,78 +901,7 @@ export default function CityMapScreen() {
     return { valid: true };
   }
 
-  function onDragEnd() {
-    const d = dragRef.current;
-    if (!d.dragging || !d.pId || !d.el) {
-      setDraggingId(null);
-      return;
-    }
-    d.el.classList.remove("dragging");
-    const rawX = parseFloat(d.el.style.left) || 0;
-    const rawY = parseFloat(d.el.style.top) || 0;
-
-    // Get this player's card
-    const me = nonFac.find((p) => p._id === d.pId);
-    const myCard = me?.cardIndex != null ? CARDS[me.cardIndex] : null;
-    const placedCount = nonFac.filter((p) => p.slotId && p._id !== d.pId).length;
-
-    // Find the nearest available slot
-    const currentOccupied = new Set(
-      nonFac.filter((p) => p.slotId && p._id !== d.pId).map((p) => p.slotId!)
-    );
-    const availableSlots = slots.filter((s) => !currentOccupied.has(s.id));
-
-    // Sort by distance
-    const sorted = availableSlots
-      .map((slot) => {
-        const px = slotToPixel(slot);
-        return { slot, dist: Math.sqrt((rawX - px.x) ** 2 + (rawY - px.y) ** 2) };
-      })
-      .sort((a, b) => a.dist - b.dist);
-
-    // Try nearest slot first, validate card rule
-    let bestSlot: PlacementSlot | null = null;
-    for (const { slot } of sorted) {
-      const check = isValidPlacement(myCard, slot, placedCount);
-      if (check.valid) {
-        bestSlot = slot;
-        break;
-      }
-    }
-
-    // If no valid slot found, show the rejection reason for the nearest slot
-    if (!bestSlot && sorted.length > 0) {
-      const check = isValidPlacement(myCard, sorted[0].slot, placedCount);
-      toast(check.reason || "No valid zone available for your card");
-      // Snap back — restore the previous slot position or reset
-      if (me?.slotId) {
-        const prevSlot = slots.find((s) => s.id === me.slotId);
-        if (prevSlot && d.el) {
-          d.el.style.left = prevSlot.x + "%";
-          d.el.style.top = prevSlot.y + "%";
-        }
-      }
-    } else if (bestSlot) {
-      // Snap to slot — set DOM position immediately, then save to Convex
-      if (d.el) {
-        d.el.style.left = bestSlot.x + "%";
-        d.el.style.top = bestSlot.y + "%";
-      }
-      moveDistrict({ playerId: d.pId, x: bestSlot.x, y: bestSlot.y, slotId: bestSlot.id });
-    }
-
-    // Clear all inline styles so React reasserts control on next render
-    if (d.el) {
-      d.el.removeAttribute("style");
-    }
-    setDraggingId(null);
-    setDragVersion((v) => v + 1); // force re-render to reapply React styles
-    dragRef.current = { off: { x: 0, y: 0 }, dragging: false, pId: null, el: null };
-    document.removeEventListener("mousemove", onDragMove);
-    document.removeEventListener("mouseup", onDragEnd);
-    document.removeEventListener("touchmove", onDragMove);
-    document.removeEventListener("touchend", onDragEnd);
-  }
+  // onDragEnd is no longer needed — cleanup happens inside startDrag's up() function
 
   async function handleSendChat() {
     if (!sessionId) return;
@@ -1018,7 +986,8 @@ export default function CityMapScreen() {
         <div className="map-area" ref={mapRef}>
           {mapTheme === "water" && <WaterMap slots={slots} occupiedSlotIds={occupiedSlotIds} />}
           {mapTheme === "space" && <SpaceMap slots={slots} occupiedSlotIds={occupiedSlotIds} />}
-          {mapTheme !== "water" && mapTheme !== "space" && <MapBackdrop theme={mapTheme} />}
+          {mapTheme === "ocean" && <OceanMap slots={slots} occupiedSlotIds={occupiedSlotIds} />}
+          {mapTheme !== "water" && mapTheme !== "space" && mapTheme !== "ocean" && <MapBackdrop theme={mapTheme} />}
 
           {/* Slot indicators — show available zones */}
           {slots.map((slot) => {
@@ -1066,38 +1035,36 @@ export default function CityMapScreen() {
             const isMe = p._id === playerId;
             const card = p.cardIndex != null ? CARDS[p.cardIndex] : null;
             const distName = card ? scenarioData.districtNames[card.id] : p.districtName;
-            const isBeingDragged = draggingId === p._id;
+            const isDragging = dragPos?.id === p._id;
             const slotData = p.slotId ? slots.find((s) => s.id === p.slotId) : null;
 
-            // Position: during drag, DOM handles it directly.
-            // Otherwise use slot percentage or fallback.
-            let posStyle: React.CSSProperties;
-            if (slotData) {
-              posStyle = { left: slotData.x + "%", top: slotData.y + "%" };
-            } else {
-              posStyle = { left: (p.x ?? 10) + "%", top: (p.y ?? 10) + "%" };
-            }
+            // Position: if being dragged use dragPos, else use slot or stored x/y
+            const pctX = isDragging ? dragPos.x : (slotData ? slotData.x : (p.x ?? 50));
+            const pctY = isDragging ? dragPos.y : (slotData ? slotData.y : (p.y ?? 50));
 
             return (
               <div
-                key={isMe ? `${p._id}-${dragVersion}` : p._id}
-                className={`dist-card${isMe ? " mine" : ""}`}
+                key={p._id}
+                className={`dist-card${isMe ? " mine" : ""}${isDragging ? " dragging" : ""}`}
                 style={{
-                  ...posStyle,
+                  left: pctX + "%",
+                  top: pctY + "%",
                   borderColor: card ? card.color + "66" : undefined,
-                  transform: "translate(-50%, -50%)",
+                  zIndex: isDragging ? 100 : 10,
                 }}
                 onMouseDown={(e) => startDrag(e, p._id)}
                 onTouchStart={(e) => startDrag(e, p._id)}
               >
-                {p.photoDataUrl ? (
-                  <img className="dc-photo" src={p.photoDataUrl} alt="" />
-                ) : (
-                  <div className="dc-placeholder">{card?.icon || "\u{1F3D9}\uFE0F"}</div>
-                )}
-                <div className="dc-name">{distName || p.districtName || p.name}</div>
-                <div className="dc-tag" style={isMe ? { color: "var(--acc1)" } : {}}>
-                  {isMe ? "YOUR DISTRICT" : p.name}
+                <div style={{ pointerEvents: "none" }}>
+                  {p.photoDataUrl ? (
+                    <img className="dc-photo" src={p.photoDataUrl} alt="" draggable={false} />
+                  ) : (
+                    <div className="dc-placeholder">{card?.icon || "\u{1F3D9}\uFE0F"}</div>
+                  )}
+                  <div className="dc-name">{distName || p.districtName || p.name}</div>
+                  <div className="dc-tag" style={isMe ? { color: "var(--acc1)" } : {}}>
+                    {isMe ? "YOUR DISTRICT" : p.name}
+                  </div>
                 </div>
               </div>
             );

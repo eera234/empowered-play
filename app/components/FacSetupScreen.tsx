@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
@@ -9,6 +9,7 @@ import { useGame } from "../GameContext";
 import BrandBar from "./BrandBar";
 import { CARDS, SCENARIOS, getThemedCard } from "../../lib/constants";
 import CardIcon from "./CardIcon";
+import { SCENARIO_ILLUSTRATIONS } from "./EntryScreen";
 
 type AssignMode =
   | { step: "idle" }
@@ -16,12 +17,17 @@ type AssignMode =
   | { step: "player_selected"; playerId: Id<"players"> };
 
 export default function FacSetupScreen() {
-  const { sessionCode, sessionId, scenario, goTo } = useGame();
-  const scenarioData = SCENARIOS.find((s) => s.id === scenario) || SCENARIOS[0];
+  const { sessionCode, sessionId, scenario, set, goTo } = useGame();
+  const session = useQuery(api.game.getSession, sessionCode ? { code: sessionCode } : "skip");
+  const currentScenario = scenario || session?.scenario || "";
+  const scenarioConfirmed = currentScenario !== "";
+  const scenarioData = SCENARIOS.find((s) => s.id === currentScenario) || SCENARIOS[0];
   const themedCards = CARDS.map((c) => getThemedCard(c, scenarioData));
   const players = useQuery(api.game.getPlayers, sessionId ? { sessionId } : "skip");
   const assignCard = useMutation(api.game.assignCard);
   const advancePhase = useMutation(api.game.advancePhase);
+  const removePlayer = useMutation(api.game.removePlayer);
+  const setScenarioMut = useMutation(api.game.setScenario);
 
   const [expandedCard, setExpandedCard] = useState<number | null>(null);
   const [assignMode, setAssignMode] = useState<AssignMode>({ step: "idle" });
@@ -102,6 +108,27 @@ export default function FacSetupScreen() {
 
   const allSent = nonFac.length > 0 && nonFac.every((p) => p.cardSent);
 
+  // Voting logic
+  const voteScenarioMut = useMutation(api.game.voteScenario);
+  const allPlayers = (players || []);
+  const facPlayer = allPlayers.find((p) => p.isFacilitator);
+  const facVote = facPlayer?.scenarioVote || null;
+  const allVoters = allPlayers.filter((p) => p.scenarioVote);
+  const everyoneVoted = allPlayers.length > 0 && allPlayers.every((p) => p.scenarioVote);
+
+  // Count votes
+  const voteCounts: Record<string, number> = {};
+  allPlayers.forEach((p) => { if (p.scenarioVote) voteCounts[p.scenarioVote] = (voteCounts[p.scenarioVote] || 0) + 1; });
+  const totalVotes = Object.values(voteCounts).reduce((a, b) => a + b, 0);
+  const maxVotes = Math.max(0, ...Object.values(voteCounts));
+  const topScenario = maxVotes > 0 ? Object.entries(voteCounts).sort((a, b) => b[1] - a[1])[0][0] : null;
+
+  async function confirmScenario(scenarioId: string) {
+    if (!sessionId) return;
+    await setScenarioMut({ sessionId, scenario: scenarioId });
+    set({ scenario: scenarioId });
+  }
+
   return (
     <div className="screen active" id="s-fac-setup">
       <BrandBar badge="FACILITATOR" backTo="s-entry" />
@@ -162,7 +189,109 @@ export default function FacSetupScreen() {
         </div>
       )}
 
-      <div className="fac-layout">
+      {/* Voting phase — shown before scenario is confirmed */}
+      {!scenarioConfirmed && (
+        <div
+          className="scenario-picker-wrap"
+          style={{
+            background: facVote
+              ? `radial-gradient(ellipse at 50% 50%, ${SCENARIOS.find((s) => s.id === facVote)?.color || "transparent"}30 0%, ${SCENARIOS.find((s) => s.id === facVote)?.color || "transparent"}18 35%, ${SCENARIOS.find((s) => s.id === facVote)?.color || "transparent"}08 60%, transparent 85%)`
+              : undefined,
+            transition: "background .6s ease",
+          }}
+        >
+          <div className="fac-session-box" style={{ marginBottom: 20 }}>
+            <div className="fac-session-studs">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="lego-stud-3d" style={{ width: 18, height: 18 }} />
+              ))}
+            </div>
+            <div className="fac-session-label">SESSION CODE</div>
+            <div className="fac-session-code">{sessionCode}</div>
+            <div className="fac-session-hint">Share this code with your team</div>
+          </div>
+
+          <div className="scenario-picker-header">
+            <div className="scenario-picker-title">VOTE FOR A WORLD</div>
+            <div style={{ fontSize: 12, color: "var(--textd)", marginTop: 4 }}>
+              {totalVotes > 0 ? `${totalVotes} vote${totalVotes !== 1 ? "s" : ""} cast` : "Tap a scenario to cast your vote"}
+            </div>
+          </div>
+
+          <div className="scenario-grid">
+            {SCENARIOS.map((s) => {
+              const Illust = SCENARIO_ILLUSTRATIONS[s.id];
+              const votes = voteCounts[s.id] || 0;
+              const isMyVote = facVote === s.id;
+              return (
+                <div
+                  key={s.id}
+                  className={`scenario-card${isMyVote ? " selected" : ""}`}
+                  style={{ "--sc-color": s.color } as React.CSSProperties}
+                  onClick={async () => {
+                    if (!facPlayer) return;
+                    await voteScenarioMut({ playerId: facPlayer._id, scenarioId: s.id });
+                  }}
+                >
+                  <div className="sc-illustration-wrap">
+                    {Illust && <Illust />}
+                    {isMyVote && <div className="sc-selected-badge">YOUR VOTE</div>}
+                    {votes > 0 && (
+                      <div style={{
+                        position: "absolute", top: 8, left: 8,
+                        background: s.color, color: "#0a0a12",
+                        fontFamily: "'Black Han Sans', sans-serif",
+                        fontSize: 11, letterSpacing: 1,
+                        padding: "3px 10px", borderRadius: 4,
+                        fontWeight: 900,
+                      }}>
+                        {votes}
+                      </div>
+                    )}
+                  </div>
+                  <div className="sc-info">
+                    <div className="sc-title" style={{ color: s.color }}>{s.title.toUpperCase()}</div>
+                    <div className="sc-tagline">{s.tagline}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Player vote status */}
+          <div style={{ marginTop: 16, display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center" }}>
+            {allPlayers.map((p) => (
+              <div key={p._id} style={{
+                padding: "4px 10px", fontSize: 11, borderRadius: 16,
+                background: p.scenarioVote ? "rgba(105,240,174,.08)" : "rgba(255,255,255,.04)",
+                border: p.scenarioVote ? "1px solid rgba(105,240,174,.2)" : "1px solid var(--border)",
+                color: p.scenarioVote ? "var(--acc4)" : "var(--textd)",
+              }}>
+                {p.isFacilitator ? "You" : p.name} {p.scenarioVote ? "✓" : ""}
+              </div>
+            ))}
+          </div>
+
+          {/* CONFIRM BUTTON — always visible when there's a leading scenario */}
+          {topScenario && (
+            <div style={{ textAlign: "center", marginTop: 20 }}>
+              <button
+                className="lb lb-yellow"
+                style={{ padding: "12px 36px", fontSize: 13 }}
+                onClick={() => confirmScenario(topScenario)}
+              >
+                CONFIRM {SCENARIOS.find((s) => s.id === topScenario)?.title.toUpperCase()}
+              </button>
+              <div style={{ fontSize: 10, color: "var(--textd)", marginTop: 6 }}>
+                You can wait for more votes or confirm now
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Card assignment — shown after scenario is confirmed */}
+      {scenarioConfirmed && <div className="fac-layout">
         {/* Left: Session info + Players */}
         <div className="fac-left">
           <div className="fac-session-box">
@@ -217,64 +346,48 @@ export default function FacSetupScreen() {
                     className={`fac-player-row${isTargeted ? " targeted" : ""}${p.cardSent ? " sent" : ""}`}
                     onClick={() => handlePlayerTap(p._id)}
                   >
-                    <div className="fac-player-avatar">
-                      {p.name[0].toUpperCase()}
-                    </div>
-                    <div className="fac-player-info">
-                      <div className="fac-player-name">{p.name}</div>
-                      {assignedCard && (
-                        <div
-                          className="fac-player-card-tag"
-                          style={{
-                            borderColor: assignedCard.color + "66",
-                            color: assignedCard.color,
-                          }}
-                        >
-                          <CardIcon icon={assignedCard.icon} size={14} /> {assignedCard.title} — SENT
-                        </div>
-                      )}
-                      {pendingCardData && !p.cardSent && (
-                        <div
-                          className="fac-player-card-tag pending"
-                          style={{
-                            borderColor: pendingCardData.color + "66",
-                            color: pendingCardData.color,
-                          }}
-                        >
-                          <CardIcon icon={pendingCardData.icon} size={14} /> {pendingCardData.title}
-                        </div>
-                      )}
-                      {!assignedCard && !pendingCardData && (
-                        <div className="fac-player-no-card">
-                          Tap a card, then this player
-                        </div>
-                      )}
-                    </div>
-                    <div className="fac-player-actions">
-                      {p.cardSent ? (
-                        <div className="fac-sent-badge">SENT</div>
-                      ) : pendingCardData ? (
-                        <div className="fac-player-btns">
-                          <button
-                            className="lb lb-green fac-send-btn"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleSendCard(p._id);
-                            }}
-                          >
-                            SEND
-                          </button>
+                    <div className="fac-player-avatar">{p.name[0].toUpperCase()}</div>
+                    <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div className="fac-player-name">{p.name}</div>
+                        {assignedCard && (
+                          <div className="fac-player-card-tag" style={{ borderColor: assignedCard.color + "44", color: assignedCard.color }}>
+                            <CardIcon icon={assignedCard.icon} size={12} /> {assignedCard.title}
+                          </div>
+                        )}
+                        {pendingCardData && !p.cardSent && (
+                          <div className="fac-player-card-tag pending" style={{ borderColor: pendingCardData.color + "44", color: pendingCardData.color }}>
+                            <CardIcon icon={pendingCardData.icon} size={12} /> {pendingCardData.title}
+                          </div>
+                        )}
+                        {p.cardSent && <div className="fac-sent-badge" style={{ marginLeft: "auto" }}>SENT</div>}
+                      </div>
+                      {!p.cardSent && (
+                        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                          {!assignedCard && !pendingCardData && (
+                            <div className="fac-player-no-card">Tap a card, then this player</div>
+                          )}
+                          {pendingCardData && (
+                            <>
+                              <button
+                                className="lb lb-green"
+                                style={{ fontSize: 9, padding: "4px 12px", letterSpacing: 1 }}
+                                onClick={(e) => { e.stopPropagation(); handleSendCard(p._id); }}
+                              >
+                                SEND
+                              </button>
+                              <button className="fac-undo-btn" onClick={(e) => { e.stopPropagation(); handleUnassign(p._id); }}>UNDO</button>
+                            </>
+                          )}
                           <button
                             className="fac-undo-btn"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleUnassign(p._id);
-                            }}
+                            style={{ marginLeft: "auto", opacity: 0.35, fontSize: 9 }}
+                            onClick={(e) => { e.stopPropagation(); if (confirm(`Remove ${p.name}?`)) { removePlayer({ playerId: p._id }); toast(`${p.name} removed`); } }}
                           >
-                            UNDO
+                            REMOVE
                           </button>
                         </div>
-                      ) : null}
+                      )}
                     </div>
                   </div>
                 );
@@ -346,7 +459,7 @@ export default function FacSetupScreen() {
                       <div className="lego-stud-3d" style={{ width: 12, height: 12 }} />
                       <div className="lego-stud-3d" style={{ width: 12, height: 12 }} />
                     </div>
-                    <div className="fac-card-icon"><CardIcon icon={c.icon} size={42} /></div>
+                    <div className="fac-card-icon"><CardIcon icon={c.icon} size={56} /></div>
                     {taken && <div className="fac-card-taken-overlay">ASSIGNED</div>}
                     {!taken && tooFewPlayers && <div className="fac-card-taken-overlay">NEEDS {c.minPlayers}+ PLAYERS</div>}
                     {isSelected && (
@@ -376,7 +489,7 @@ export default function FacSetupScreen() {
             })}
           </div>
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

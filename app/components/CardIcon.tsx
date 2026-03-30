@@ -28,6 +28,15 @@ const ICON_COLORS: Record<string, { main: string; shade: string; hi: string }> =
   "hub":         { main: "#4A148C", shade: "#2A0054", hi: "#9C27B0" },
   "capsule":     { main: "#00BFA5", shade: "#00897B", hi: "#64FFDA" },
   "hatch":       { main: "#1565C0", shade: "#0D47A1", hi: "#42A5F5" },
+  // Ocean theme icons
+  "spire":       { main: "#FF6D9E", shade: "#C63D6E", hi: "#FFB0CB" },
+  "shelf":       { main: "#1B5E20", shade: "#0A3A10", hi: "#4CAF50" },
+  "chamber":     { main: "#F57C00", shade: "#BF360C", hi: "#FFB74D" },
+  "current":     { main: "#006064", shade: "#003436", hi: "#4DD0E1" },
+  "biolume":     { main: "#AA00FF", shade: "#6200B3", hi: "#D580FF" },
+  "vent":        { main: "#FF6D00", shade: "#C43E00", hi: "#FFAB40" },
+  "pod":         { main: "#00BFA5", shade: "#008C7A", hi: "#64FFDA" },
+  "airlock":     { main: "#FFD600", shade: "#C7A500", hi: "#FFFF00" },
 };
 
 export default function CardIcon({ icon, size = 32 }: { icon: string; size?: number }) {
@@ -261,6 +270,142 @@ export default function CardIcon({ icon, size = 32 }: { icon: string; size?: num
           <circle cx="13" cy="6" r="2" fill={c.shade} stroke={c.hi} strokeWidth=".4" />
           <circle cx="20" cy="6" r="2" fill={c.shade} stroke={c.hi} strokeWidth=".4" />
           <circle cx="27" cy="6" r="2" fill={c.shade} stroke={c.hi} strokeWidth=".4" />
+        </svg>
+      );
+    // ── Ocean theme icons ──
+    case "spire":
+      return (
+        <svg viewBox="0 0 40 40" width={size} height={size}>
+          {/* Coral spire */}
+          <path d="M20 4 L26 14 L28 28 Q24 34 20 36 Q16 34 12 28 L14 14 Z" fill={c.main} />
+          <path d="M20 4 L14 14 L12 28" fill="none" stroke={c.hi} strokeWidth="1" opacity=".3" />
+          {/* Branches */}
+          <path d="M14 18 L8 14 M14 22 L6 20" stroke={c.main} strokeWidth="2" strokeLinecap="round" />
+          <path d="M26 16 L32 12 M26 22 L34 20" stroke={c.main} strokeWidth="2" strokeLinecap="round" />
+          <circle cx="8" cy="13" r="2" fill={c.hi} opacity=".5" />
+          <circle cx="32" cy="11" r="2" fill={c.hi} opacity=".5" />
+          <circle cx="6" cy="19" r="1.5" fill={c.hi} opacity=".4" />
+          <circle cx="34" cy="19" r="1.5" fill={c.hi} opacity=".4" />
+        </svg>
+      );
+    case "shelf":
+      return (
+        <svg viewBox="0 0 40 40" width={size} height={size}>
+          <rect x="2" y="22" width="36" height="12" rx="2" fill={c.main} />
+          <rect x="2" y="22" width="36" height="2" fill={c.hi} opacity=".3" />
+          {/* Kelp strands */}
+          <path d="M8 22 Q6 14 8 8" stroke={c.hi} strokeWidth="1.5" fill="none" strokeLinecap="round" />
+          <path d="M16 22 Q14 12 16 6" stroke={c.main} strokeWidth="1.5" fill="none" strokeLinecap="round" />
+          <path d="M32 22 Q30 15 32 10" stroke={c.hi} strokeWidth="1.5" fill="none" strokeLinecap="round" opacity=".5" />
+          {[8,16,24,32].map(x => <circle key={x} cx={x} cy="20" r="2.5" fill={c.shade} stroke={c.hi} strokeWidth=".4" />)}
+        </svg>
+      );
+    case "chamber":
+      return (
+        <svg viewBox="0 0 40 40" width={size} height={size}>
+          {/* Pressure dome */}
+          <ellipse cx="20" cy="24" rx="16" ry="12" fill={c.main} />
+          <ellipse cx="20" cy="24" rx="16" ry="12" fill="none" stroke={c.shade} strokeWidth="1" />
+          <ellipse cx="20" cy="24" rx="12" ry="8" fill={d} />
+          {/* Porthole */}
+          <circle cx="20" cy="22" r="5" fill={d} stroke={c.hi} strokeWidth="1" />
+          <circle cx="20" cy="22" r="2" fill={c.hi} opacity=".3" />
+          {/* Pressure lines */}
+          <line x1="6" y1="24" x2="34" y2="24" stroke={c.shade} strokeWidth=".5" opacity=".4" />
+          {/* Studs */}
+          <circle cx="14" cy="14" r="2.5" fill={c.shade} stroke={c.hi} strokeWidth=".4" />
+          <circle cx="26" cy="14" r="2.5" fill={c.shade} stroke={c.hi} strokeWidth=".4" />
+        </svg>
+      );
+    case "current":
+      return (
+        <svg viewBox="0 0 40 40" width={size} height={size}>
+          {/* Flowing tube */}
+          <rect x="2" y="16" width="36" height="10" rx="5" fill={c.main} />
+          <rect x="2" y="16" width="36" height="2" fill={c.hi} opacity=".2" />
+          {/* Current flow arrows */}
+          <path d="M10 21 L16 18 L10 15" fill="none" stroke={c.hi} strokeWidth="1" opacity=".5" />
+          <path d="M22 21 L28 18 L22 15" fill="none" stroke={c.hi} strokeWidth="1" opacity=".4" />
+          {/* Bubbles */}
+          <circle cx="8" cy="12" r="1.5" fill="none" stroke={c.hi} strokeWidth=".6" opacity=".4" />
+          <circle cx="20" cy="10" r="2" fill="none" stroke={c.hi} strokeWidth=".6" opacity=".3" />
+          <circle cx="32" cy="11" r="1" fill="none" stroke={c.hi} strokeWidth=".5" opacity=".4" />
+          <circle cx="12" cy="14" r="2" fill={c.shade} stroke={c.hi} strokeWidth=".4" />
+          <circle cx="28" cy="14" r="2" fill={c.shade} stroke={c.hi} strokeWidth=".4" />
+        </svg>
+      );
+    case "biolume":
+      return (
+        <svg viewBox="0 0 40 40" width={size} height={size}>
+          {/* Glowing jellyfish-like beacon */}
+          <ellipse cx="20" cy="14" rx="10" ry="8" fill={c.main} />
+          <ellipse cx="20" cy="14" rx="10" ry="8" fill="none" stroke={c.hi} strokeWidth=".5" opacity=".4" />
+          <circle cx="20" cy="12" r="4" fill={c.hi} opacity=".3" />
+          <circle cx="20" cy="12" r="2" fill={c.hi} opacity=".5" />
+          {/* Tentacles */}
+          <path d="M14 22 Q12 28 14 34" stroke={c.main} strokeWidth="1.5" fill="none" strokeLinecap="round" />
+          <path d="M20 22 Q20 30 20 36" stroke={c.main} strokeWidth="1.5" fill="none" strokeLinecap="round" />
+          <path d="M26 22 Q28 28 26 34" stroke={c.main} strokeWidth="1.5" fill="none" strokeLinecap="round" />
+          {/* Glow dots */}
+          <circle cx="14" cy="30" r="1" fill={c.hi} opacity=".5" />
+          <circle cx="20" cy="32" r="1" fill={c.hi} opacity=".4" />
+          <circle cx="26" cy="30" r="1" fill={c.hi} opacity=".5" />
+        </svg>
+      );
+    case "vent":
+      return (
+        <svg viewBox="0 0 40 40" width={size} height={size}>
+          {/* Thermal vent opening */}
+          <path d="M12 34 L8 20 Q20 12 32 20 L28 34 Z" fill={c.main} />
+          <path d="M12 34 L8 20 Q20 12 32 20" fill="none" stroke={c.hi} strokeWidth=".8" opacity=".3" />
+          {/* Heat glow */}
+          <ellipse cx="20" cy="18" rx="8" ry="4" fill={c.hi} opacity=".2" />
+          {/* Rising heat */}
+          <path d="M17 14 Q19 8 17 4" stroke={c.hi} strokeWidth="1" fill="none" opacity=".4" />
+          <path d="M23 14 Q21 8 23 4" stroke={c.hi} strokeWidth="1" fill="none" opacity=".3" />
+          <path d="M20 12 Q20 6 20 2" stroke={c.hi} strokeWidth="1.2" fill="none" opacity=".5" />
+          {/* Base studs */}
+          <circle cx="16" cy="32" r="2" fill={c.shade} stroke={c.hi} strokeWidth=".4" />
+          <circle cx="24" cy="32" r="2" fill={c.shade} stroke={c.hi} strokeWidth=".4" />
+        </svg>
+      );
+    case "pod":
+      return (
+        <svg viewBox="0 0 40 40" width={size} height={size}>
+          {/* Compact submersible pod */}
+          <ellipse cx="20" cy="20" rx="14" ry="10" fill={c.main} />
+          <ellipse cx="20" cy="20" rx="14" ry="10" fill="none" stroke={c.shade} strokeWidth="1" />
+          {/* Viewport */}
+          <circle cx="20" cy="18" r="5" fill={d} stroke={c.hi} strokeWidth="1" />
+          <circle cx="20" cy="18" r="2" fill={c.hi} opacity=".3" />
+          {/* Rivets */}
+          <circle cx="10" cy="20" r="1.5" fill={c.shade} />
+          <circle cx="30" cy="20" r="1.5" fill={c.shade} />
+          {/* Studs */}
+          <circle cx="15" cy="11" r="2" fill={c.shade} stroke={c.hi} strokeWidth=".4" />
+          <circle cx="25" cy="11" r="2" fill={c.shade} stroke={c.hi} strokeWidth=".4" />
+          {/* Propeller */}
+          <rect x="33" y="18" width="5" height="4" rx="1" fill={c.shade} />
+        </svg>
+      );
+    case "airlock":
+      return (
+        <svg viewBox="0 0 40 40" width={size} height={size}>
+          {/* Heavy door frame */}
+          <rect x="8" y="6" width="24" height="30" rx="2" fill={c.main} />
+          <rect x="8" y="6" width="24" height="2" fill={c.hi} opacity=".3" />
+          {/* Door opening */}
+          <rect x="12" y="14" width="16" height="18" rx="1" fill={d} />
+          {/* Door handle/wheel */}
+          <circle cx="20" cy="22" r="5" fill="none" stroke={c.hi} strokeWidth="1.5" />
+          <circle cx="20" cy="22" r="2" fill={c.hi} opacity=".3" />
+          <line x1="20" y1="17" x2="20" y2="19" stroke={c.hi} strokeWidth="1" opacity=".4" />
+          <line x1="20" y1="25" x2="20" y2="27" stroke={c.hi} strokeWidth="1" opacity=".4" />
+          {/* Warning stripes */}
+          <rect x="8" y="34" width="24" height="3" fill={c.shade} />
+          {/* Studs */}
+          <circle cx="14" cy="4" r="2" fill={c.shade} stroke={c.hi} strokeWidth=".4" />
+          <circle cx="26" cy="4" r="2" fill={c.shade} stroke={c.hi} strokeWidth=".4" />
         </svg>
       );
     default:

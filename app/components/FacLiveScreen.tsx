@@ -9,6 +9,7 @@ import { useGame } from "../GameContext";
 import BrandBar from "./BrandBar";
 import WaterMap from "./maps/WaterMap";
 import SpaceMap from "./maps/SpaceMap";
+import OceanMap from "./maps/OceanMap";
 import VoiceRecorder from "./VoiceRecorder";
 import CardIcon from "./CardIcon";
 
@@ -29,6 +30,7 @@ export default function FacLiveScreen() {
   const messages = useQuery(api.game.getMessages, sessionId ? { sessionId } : "skip");
   const advancePhase = useMutation(api.game.advancePhase);
   const sendMessage = useMutation(api.game.sendMessage);
+  const removePlayer = useMutation(api.game.removePlayer);
   const [tab, setTab] = useState<"dashboard" | "map">("dashboard");
   const [chatInput, setChatInput] = useState("");
   const chatRef = useRef<HTMLDivElement>(null);
@@ -77,7 +79,16 @@ export default function FacLiveScreen() {
 
   return (
     <div className="screen active" id="s-fac-live">
-      <BrandBar badge="FACILITATOR LIVE" />
+      <BrandBar badge="FACILITATOR LIVE">
+        <div style={{
+          marginLeft: "auto", display: "flex", alignItems: "center", gap: 6,
+          background: "rgba(0,0,0,.3)", borderRadius: 6, padding: "4px 10px",
+          fontSize: 11, fontWeight: 800, letterSpacing: 2, zIndex: 1, position: "relative",
+        }}>
+          <span style={{ color: "var(--textd)", fontSize: 9 }}>CODE</span>
+          <span style={{ color: "#fff" }}>{sessionCode}</span>
+        </div>
+      </BrandBar>
 
       {/* Tab bar — shows map tab once building starts */}
       {showMapTab && (
@@ -127,9 +138,9 @@ export default function FacLiveScreen() {
                 {nonFac.map((p) => {
                   const card = p.cardIndex != null ? CARDS[p.cardIndex] : null;
                   return (
-                    <div key={p._id} className="p-row">
+                    <div key={p._id} className="p-row" style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <div className="pr-name">{p.name}</div>
-                      <span style={{ fontSize: 11, color: "var(--textd)", display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 11, color: "var(--textd)", display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap", flex: 1 }}>
                         {card && <span style={{ color: card.color, display: "inline-flex", alignItems: "center", gap: 3 }}><CardIcon icon={card.icon} size={12} /> {card.title}</span>}
                         {p.cardSent && (p.cardRead
                           ? <span style={{ color: "var(--acc4)" }}>{"\u2713"} read</span>
@@ -137,6 +148,17 @@ export default function FacLiveScreen() {
                         )}
                         {p.uploaded && <span style={{ color: "var(--acc4)" }}>{"\u2713"} uploaded</span>}
                       </span>
+                      <button
+                        style={{ background: "none", border: "1px solid var(--border)", color: "var(--textd)", fontSize: 9, padding: "2px 6px", borderRadius: 4, cursor: "pointer", flexShrink: 0 }}
+                        onClick={() => {
+                          if (confirm(`Remove ${p.name}?`)) {
+                            removePlayer({ playerId: p._id });
+                            toast(`${p.name} removed`);
+                          }
+                        }}
+                      >
+                        REMOVE
+                      </button>
                     </div>
                   );
                 })}
@@ -179,7 +201,8 @@ export default function FacLiveScreen() {
           <div style={{ flex: 1, position: "relative", overflow: "hidden", background: "var(--bg0)" }}>
             {scenarioData.mapTheme === "water" && <WaterMap slots={[]} occupiedSlotIds={new Set()} />}
             {scenarioData.mapTheme === "space" && <SpaceMap slots={[]} occupiedSlotIds={new Set()} />}
-            {scenarioData.mapTheme !== "water" && scenarioData.mapTheme !== "space" && (
+            {scenarioData.mapTheme === "ocean" && <OceanMap slots={[]} occupiedSlotIds={new Set()} />}
+            {scenarioData.mapTheme !== "water" && scenarioData.mapTheme !== "space" && scenarioData.mapTheme !== "ocean" && (
               <div className="map-img-wrap"><div style={{ background: "var(--bg0)", width: "100%", height: "100%" }} /></div>
             )}
             {/* District cards on map (read-only, not draggable) */}

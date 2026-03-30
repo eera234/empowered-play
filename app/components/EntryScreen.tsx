@@ -782,7 +782,7 @@ function OceanDepthsIllustration() {
   );
 }
 
-const ILLUSTRATIONS: Record<string, () => React.JSX.Element> = {
+export const SCENARIO_ILLUSTRATIONS: Record<string, () => React.JSX.Element> = {
   rising_tides: CityscapeIllustration,
   last_orbit: DeepSpaceIllustration,
   deep_current: OceanDepthsIllustration,
@@ -841,7 +841,7 @@ export default function EntryScreen() {
           </div>
           <div className="scenario-grid">
             {SCENARIOS.map((s) => {
-              const Illust = ILLUSTRATIONS[s.id];
+              const Illust = SCENARIO_ILLUSTRATIONS[s.id];
               const isSel = selected === s.id;
               return (
                 <div
@@ -894,7 +894,16 @@ export default function EntryScreen() {
             <div className="mc-lbl" style={{ color: "#FFD700" }}>PLAYER</div>
             <div className="mc-sub">Join your team&apos;s mission</div>
           </div>
-          <div className="mode-card" onClick={() => setPicking(true)}>
+          <div className="mode-card" onClick={async () => {
+            if (loading) return;
+            setLoading(true);
+            try {
+              const res = await createSession({ scenario: "" });
+              const joinRes = await joinAsFac({ code: res.code, name: "Facilitator", isFacilitator: true });
+              set({ role: "facilitator", sessionCode: res.code, sessionId: res.sessionId, playerId: joinRes.playerId, scenario: "" });
+              goTo("s-fac-setup");
+            } finally { setLoading(false); }
+          }}>
             <div className="mc-icon-wrap">
               <FacilitatorIcon />
             </div>

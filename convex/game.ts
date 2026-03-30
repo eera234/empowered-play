@@ -99,11 +99,19 @@ export const joinSession = mutation({
       .collect();
 
     if (!isFacilitator) {
-      if (existing.some((p) => p.name.toLowerCase() === name.toLowerCase())) {
-        return { success: false, error: "That name is already taken in this session." };
+      // If a player with same name exists, rejoin as them
+      const sameNamePlayer = existing.find((p) => p.name.toLowerCase() === name.toLowerCase() && !p.isFacilitator);
+      if (sameNamePlayer) {
+        return { success: true, sessionId: session._id, playerId: sameNamePlayer._id, phase: session.phase, rejoined: true };
       }
       if (existing.filter((p) => !p.isFacilitator).length >= 10) {
         return { success: false, error: "Session is full (max 10 players)." };
+      }
+    } else {
+      // Facilitator rejoin
+      const existingFac = existing.find((p) => p.isFacilitator);
+      if (existingFac) {
+        return { success: true, sessionId: session._id, playerId: existingFac._id, phase: session.phase, rejoined: true };
       }
     }
 
@@ -115,7 +123,21 @@ export const joinSession = mutation({
       isFacilitator,
     });
 
-    return { success: true, sessionId: session._id, playerId, phase: session.phase };
+    return { success: true, sessionId: session._id, playerId, phase: session.phase, scenario: session.scenario };
+  },
+});
+
+export const voteScenario = mutation({
+  args: { playerId: v.id("players"), scenarioId: v.string() },
+  handler: async (ctx, { playerId, scenarioId }) => {
+    await ctx.db.patch(playerId, { scenarioVote: scenarioId });
+  },
+});
+
+export const setScenario = mutation({
+  args: { sessionId: v.id("sessions"), scenario: v.string() },
+  handler: async (ctx, { sessionId, scenario }) => {
+    await ctx.db.patch(sessionId, { scenario });
   },
 });
 
@@ -165,10 +187,16 @@ export const uploadDistrict = mutation({
     const player = await ctx.db.get(playerId);
     if (!player) return;
 
+    // Give a spread starting position (percentage) so cards don't stack
+    const startX = 15 + Math.random() * 60; // 15-75%
+    const startY = 15 + Math.random() * 55; // 15-70%
+
     await ctx.db.patch(playerId, {
       districtName,
       photoDataUrl,
       uploaded: true,
+      x: Math.round(startX),
+      y: Math.round(startY),
     });
 
     // Auto-advance phase: if all non-facilitator players have uploaded, move to city_map

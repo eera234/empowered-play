@@ -35,12 +35,32 @@ const SCREENS: Record<string, ComponentType> = {
 };
 
 function GameShell() {
-  const { screen, sessionCode, role, goTo } = useGame();
+  const { screen, sessionCode, sessionId, playerId, role, set, goTo } = useGame();
   const session = useQuery(
     api.game.getSession,
     sessionCode ? { code: sessionCode } : "skip"
   );
+  const players = useQuery(
+    api.game.getPlayers,
+    sessionId ? { sessionId } : "skip"
+  );
   const prevPhaseRef = useRef<string | null>(null);
+
+  // If restored playerId no longer exists (player was removed), clear and go to entry
+  useEffect(() => {
+    if (!playerId || !players) return;
+    const stillExists = players.some((p) => p._id === playerId);
+    if (!stillExists) {
+      set({ role: null, name: "", sessionCode: "", sessionId: null, playerId: null, scenario: "", screen: "s-entry" });
+    }
+  }, [playerId, players, set]);
+
+  // Keep scenario in sync with session (for players who didn't set it locally)
+  useEffect(() => {
+    if (session?.scenario && session.scenario !== "") {
+      set({ scenario: session.scenario });
+    }
+  }, [session?.scenario, set]);
 
   useEffect(() => {
     if (!session || session.phase === prevPhaseRef.current) return;
