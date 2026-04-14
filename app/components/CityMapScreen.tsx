@@ -984,7 +984,7 @@ export default function CityMapScreen() {
         </div>
 
         <div className="map-area" ref={mapRef}>
-          {mapTheme === "water" && <WaterMap slots={slots} occupiedSlotIds={occupiedSlotIds} />}
+          {mapTheme === "water" && <WaterMap slots={slots} occupiedSlotIds={occupiedSlotIds} rebuilt={cityComplete} />}
           {mapTheme === "space" && <SpaceMap slots={slots} occupiedSlotIds={occupiedSlotIds} />}
           {mapTheme === "ocean" && <OceanMap slots={slots} occupiedSlotIds={occupiedSlotIds} />}
           {mapTheme !== "water" && mapTheme !== "space" && mapTheme !== "ocean" && <MapBackdrop theme={mapTheme} />}

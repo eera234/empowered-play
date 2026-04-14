@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { SCENARIOS } from "../../lib/constants";
@@ -14,30 +15,44 @@ export default function WaitScreen() {
   const voteScenario = useMutation(api.game.voteScenario);
 
   const otherPlayers = (players || []).filter((p) => !p.isFacilitator && p.name !== name);
-  const nonFac = (players || []).filter((p) => !p.isFacilitator);
   const me = (players || []).find((p) => p._id === playerId);
   const myVote = me?.scenarioVote || null;
   const scenarioSet = session?.scenario && session.scenario !== "";
 
-  // Vote counts
-  const voteCounts: Record<string, number> = {};
-  nonFac.forEach((p) => { if (p.scenarioVote) voteCounts[p.scenarioVote] = (voteCounts[p.scenarioVote] || 0) + 1; });
+  // Local selection (before submitting)
+  const [localPick, setLocalPick] = useState<string | null>(null);
+  const hasSubmitted = !!myVote;
 
-  async function handleVote(scenarioId: string) {
-    if (!playerId) return;
-    await voteScenario({ playerId, scenarioId });
+  // The active selection is either the submitted vote or the local pick
+  const activePick = hasSubmitted ? myVote : localPick;
+
+  // Vote counts (only submitted votes from Convex)
+  const allPlayersInSession = (players || []);
+  const voteCounts: Record<string, number> = {};
+  allPlayersInSession.forEach((p) => { if (p.scenarioVote) voteCounts[p.scenarioVote] = (voteCounts[p.scenarioVote] || 0) + 1; });
+
+  async function submitVote() {
+    if (!playerId || !localPick) return;
+    await voteScenario({ playerId, scenarioId: localPick });
   }
 
-  // Scenario not set yet — show voting
+  async function changeVote() {
+    if (!playerId) return;
+    // Clear the vote in Convex
+    await voteScenario({ playerId, scenarioId: "" });
+    setLocalPick(null);
+  }
+
   if (!scenarioSet) {
+    const bgColor = activePick ? SCENARIOS.find((s) => s.id === activePick)?.color : null;
     return (
       <div className="screen active" id="s-wait">
         <BrandBar />
         <div
           className="scenario-picker-wrap"
           style={{
-            background: myVote
-              ? `radial-gradient(ellipse at 50% 50%, ${SCENARIOS.find((s) => s.id === myVote)?.color || "transparent"}30 0%, ${SCENARIOS.find((s) => s.id === myVote)?.color || "transparent"}18 35%, ${SCENARIOS.find((s) => s.id === myVote)?.color || "transparent"}08 60%, transparent 85%)`
+            background: bgColor
+              ? `radial-gradient(ellipse at 50% 50%, ${bgColor}30 0%, ${bgColor}18 35%, ${bgColor}08 60%, transparent 85%)`
               : undefined,
             transition: "background .6s ease",
           }}
@@ -45,33 +60,38 @@ export default function WaitScreen() {
           <div className="scenario-picker-header">
             <div className="scenario-picker-title">VOTE FOR YOUR WORLD</div>
             <div style={{ fontSize: 12, color: "var(--textd)", marginTop: 4 }}>
-              Tap the scenario you want to play
+              {hasSubmitted ? "Vote submitted. You can change it until the facilitator proceeds." : "Tap a scenario, then submit your vote."}
             </div>
           </div>
           <div className="scenario-grid">
             {SCENARIOS.map((s) => {
               const Illust = SCENARIO_ILLUSTRATIONS[s.id];
-              const isMyVote = myVote === s.id;
+              const isActive = activePick === s.id;
               const votes = voteCounts[s.id] || 0;
               return (
                 <div
                   key={s.id}
-                  className={`scenario-card${isMyVote ? " selected" : ""}`}
+                  className={`scenario-card${isActive ? " selected" : ""}`}
                   style={{ "--sc-color": s.color } as React.CSSProperties}
-                  onClick={() => handleVote(s.id)}
+                  onClick={() => {
+                    if (hasSubmitted) return; // Must click CHANGE first
+                    setLocalPick(s.id);
+                  }}
                 >
                   <div className="sc-illustration-wrap">
                     {Illust && <Illust />}
-                    {isMyVote && <div className="sc-selected-badge">YOUR VOTE</div>}
-                    {votes > 0 && !isMyVote && (
+                    {isActive && hasSubmitted && <div className="sc-selected-badge">YOUR VOTE</div>}
+                    {isActive && !hasSubmitted && <div className="sc-selected-badge" style={{ background: "rgba(255,215,0,.9)", color: "#0a0a12" }}>SELECTED</div>}
+                    {votes > 0 && !isActive && (
                       <div style={{
-                        position: "absolute", top: 8, right: 8,
-                        background: s.color, color: "#fff",
+                        position: "absolute", top: 8, left: 8,
+                        background: s.color, color: "#0a0a12",
                         fontFamily: "'Black Han Sans', sans-serif",
-                        fontSize: 10, letterSpacing: 1.5,
-                        padding: "4px 10px", borderRadius: 4,
+                        fontSize: 11, letterSpacing: 1,
+                        padding: "3px 10px", borderRadius: 4,
+                        fontWeight: 900,
                       }}>
-                        {votes} VOTE{votes !== 1 ? "S" : ""}
+                        {votes}
                       </div>
                     )}
                   </div>
@@ -84,32 +104,51 @@ export default function WaitScreen() {
             })}
           </div>
 
-          {myVote && (
-            <div style={{ textAlign: "center", marginTop: 16, fontSize: 12, color: "var(--textd)" }}>
-              Vote cast. Waiting for everyone to vote...
-            </div>
-          )}
+          {/* Submit / Change buttons */}
+          <div style={{ textAlign: "center", marginTop: 20 }}>
+            {!hasSubmitted && localPick && (
+              <button
+                className="lb lb-yellow"
+                style={{ padding: "10px 32px", fontSize: 13 }}
+                onClick={submitVote}
+              >
+                SUBMIT VOTE
+              </button>
+            )}
+            {hasSubmitted && (
+              <button
+                className="lb lb-ghost"
+                style={{ padding: "8px 24px", fontSize: 12 }}
+                onClick={changeVote}
+              >
+                CHANGE VOTE
+              </button>
+            )}
+          </div>
 
-          <div style={{ marginTop: 16, textAlign: "center" }}>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center", marginBottom: 8 }}>
-              {otherPlayers.map((p) => (
-                <div key={p._id} style={{
-                  padding: "4px 10px", fontSize: 11, borderRadius: 16,
-                  background: p.scenarioVote ? "rgba(105,240,174,.08)" : "rgba(255,255,255,.04)",
-                  border: p.scenarioVote ? "1px solid rgba(105,240,174,.2)" : "1px solid var(--border)",
-                  color: p.scenarioVote ? "var(--acc4)" : "var(--textd)",
-                }}>
-                  {p.name} {p.scenarioVote ? "✓" : ""}
-                </div>
-              ))}
-            </div>
+          {/* Other players */}
+          <div style={{ marginTop: 16, display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center" }}>
+            {otherPlayers.map((p) => (
+              <div key={p._id} style={{
+                padding: "4px 10px", fontSize: 11, borderRadius: 16,
+                background: p.scenarioVote ? "rgba(105,240,174,.08)" : "rgba(255,255,255,.04)",
+                border: p.scenarioVote ? "1px solid rgba(105,240,174,.2)" : "1px solid var(--border)",
+                color: p.scenarioVote ? "var(--acc4)" : "var(--textd)",
+              }}>
+                {p.name} {p.scenarioVote ? "✓" : ""}
+              </div>
+            ))}
+          </div>
+
+          <div style={{ fontSize: 11, color: "var(--textd)", textAlign: "center", marginTop: 10 }}>
+            Waiting for facilitator to proceed...
           </div>
         </div>
       </div>
     );
   }
 
-  // Scenario confirmed — waiting for cards
+  // Scenario confirmed
   const chosenScenario = SCENARIOS.find((s) => s.id === session?.scenario);
   return (
     <div className="screen active" id="s-wait">

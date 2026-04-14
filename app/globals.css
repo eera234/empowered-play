@@ -396,8 +396,8 @@ html,body{width:100%;min-height:100vh;font-family:'Nunito',sans-serif;overflow-x
 
 /* Map area */
 .map-area{flex:1;position:relative;overflow:hidden;background:var(--bg0)}
-.map-img-wrap{position:absolute;inset:0}
-.map-bg-img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}
+.map-img-wrap{position:absolute;inset:0;overflow:hidden}
+.map-bg-img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none;position:absolute;inset:0}
 /* Zone placement indicators */
 .slot-indicator{position:absolute;width:110px;height:80px;transform:translate(-50%,-50%);border:2px dashed rgba(255,215,0,.3);border-radius:10px;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.25);z-index:3;pointer-events:none;animation:slotPulse 2.5s ease-in-out infinite}
 @keyframes slotPulse{0%,100%{border-color:rgba(255,215,0,.3);box-shadow:0 0 8px rgba(255,215,0,.05)}50%{border-color:rgba(255,215,0,.6);box-shadow:0 0 16px rgba(255,215,0,.12)}}

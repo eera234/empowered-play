@@ -10,7 +10,15 @@ interface BrandBarProps {
 }
 
 export default function BrandBar({ badge, backTo, children }: BrandBarProps) {
-  const { goTo } = useGame();
+  const { sessionId, set, goTo } = useGame();
+
+  function leaveSession() {
+    if (!confirm("Leave this session? You can rejoin with the same code and name.")) return;
+    set({ role: null, name: "", sessionCode: "", sessionId: null, playerId: null, scenario: "", screen: "s-entry" });
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("empowered-play-session");
+    }
+  }
 
   return (
     <div className="brand-bar">
@@ -24,13 +32,18 @@ export default function BrandBar({ badge, backTo, children }: BrandBarProps) {
       </div>
       {badge && <div className="fac-badge">{badge}</div>}
       {children}
-      {backTo && (
-        <div className="b-right">
+      <div className="b-right">
+        {backTo && (
           <button className="back-btn" onClick={() => goTo(backTo)}>
-            &larr; back
+            back
           </button>
-        </div>
-      )}
+        )}
+        {sessionId && (
+          <button className="back-btn" onClick={leaveSession} style={{ opacity: 0.6 }}>
+            leave
+          </button>
+        )}
+      </div>
     </div>
   );
 }

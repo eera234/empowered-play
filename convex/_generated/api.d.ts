@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as detectLego from "../detectLego.js";
 import type * as game from "../game.js";
 
 import type {
@@ -17,6 +18,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  detectLego: typeof detectLego;
   game: typeof game;
 }>;
 

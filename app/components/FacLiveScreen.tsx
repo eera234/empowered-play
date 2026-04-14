@@ -199,7 +199,7 @@ export default function FacLiveScreen() {
         <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
           {/* Map area */}
           <div style={{ flex: 1, position: "relative", overflow: "hidden", background: "var(--bg0)" }}>
-            {scenarioData.mapTheme === "water" && <WaterMap slots={[]} occupiedSlotIds={new Set()} />}
+            {scenarioData.mapTheme === "water" && <WaterMap slots={[]} occupiedSlotIds={new Set()} rebuilt={phase === "debrief" || phase === "constraint_reveal" || phase === "complete"} />}
             {scenarioData.mapTheme === "space" && <SpaceMap slots={[]} occupiedSlotIds={new Set()} />}
             {scenarioData.mapTheme === "ocean" && <OceanMap slots={[]} occupiedSlotIds={new Set()} />}
             {scenarioData.mapTheme !== "water" && scenarioData.mapTheme !== "space" && scenarioData.mapTheme !== "ocean" && (

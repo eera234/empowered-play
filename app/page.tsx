@@ -51,16 +51,46 @@ function GameShell() {
     if (!playerId || !players) return;
     const stillExists = players.some((p) => p._id === playerId);
     if (!stillExists) {
-      set({ role: null, name: "", sessionCode: "", sessionId: null, playerId: null, scenario: "", screen: "s-entry" });
+      clearSession();
     }
-  }, [playerId, players, set]);
+  }, [playerId, players]);
 
-  // Keep scenario in sync with session (for players who didn't set it locally)
+  // If session code doesn't find a session (deleted/expired), clear saved data
+  // session is null when query returns no result, undefined when still loading
+  useEffect(() => {
+    if (!sessionCode) return;
+    if (session === null) {
+      // Query returned, session not found
+      clearSession();
+    }
+  }, [session, sessionCode]);
+
+  // If session is complete, clear saved data so browser can join a new game
+  useEffect(() => {
+    if (session?.phase === "complete") {
+      // Small delay so the complete screen shows before clearing
+      const timer = setTimeout(() => {
+        if (typeof window !== "undefined") {
+          localStorage.removeItem("empowered-play-session");
+        }
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [session?.phase]);
+
+  // Keep scenario in sync with session
   useEffect(() => {
     if (session?.scenario && session.scenario !== "") {
       set({ scenario: session.scenario });
     }
   }, [session?.scenario, set]);
+
+  function clearSession() {
+    set({ role: null, name: "", sessionCode: "", sessionId: null, playerId: null, scenario: "", screen: "s-entry" });
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("empowered-play-session");
+    }
+  }
 
   useEffect(() => {
     if (!session || session.phase === prevPhaseRef.current) return;

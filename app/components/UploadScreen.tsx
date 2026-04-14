@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { CARDS, SCENARIOS } from "../../lib/constants";
 import { toast } from "sonner";
@@ -81,6 +81,7 @@ export default function UploadScreen() {
   const { playerId, myCard, sessionCode, scenario, set, goTo } = useGame();
   const session = useQuery(api.game.getSession, sessionCode ? { code: sessionCode } : "skip");
   const uploadDistrict = useMutation(api.game.uploadDistrict);
+  const detectBlocks = useAction(api.detectLego.detectBuildingBlocks);
 
   const scenarioData = SCENARIOS.find((s) => s.id === (scenario || session?.scenario)) || SCENARIOS[0];
   const districtName = myCard ? scenarioData.districtNames[myCard.id] : "";
@@ -88,11 +89,13 @@ export default function UploadScreen() {
   const [mode, setMode] = useState<"camera" | null>(null);
   const [photo, setPhoto] = useState<string | null>(null);
   const [distName, setDistName] = useState("");
+  const [detecting, setDetecting] = useState(false);
+  const [legoVerified, setLegoVerified] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const canSubmit = photo && distName.trim().length > 0;
+  const canSubmit = photo && legoVerified && distName.trim().length > 0;
 
   function selectCamera() {
     setMode("camera");
@@ -121,16 +124,39 @@ export default function UploadScreen() {
     }
   }
 
-  function capturePhoto() {
+  async function capturePhoto() {
     const v = videoRef.current;
     const c = canvasRef.current;
     if (!v || !c) return;
     c.width = v.videoWidth;
     c.height = v.videoHeight;
     c.getContext("2d")?.drawImage(v, 0, 0);
-    setPhoto(c.toDataURL("image/jpeg", 0.85));
+    const dataUrl = c.toDataURL("image/jpeg", 0.85);
+    setPhoto(dataUrl);
     stopCam();
     setMode(null);
+    setLegoVerified(false);
+
+    // Run building block detection via Convex action
+    setDetecting(true);
+    try {
+      // Strip the data URL prefix, send only base64
+      const base64 = dataUrl.split(",")[1];
+      const result = await detectBlocks({ imageBase64: base64 });
+      console.log("Detection result:", result);
+      if (result.isLego) {
+        setLegoVerified(true);
+        toast(result.skipped ? "Upload allowed" : "Build detected \u2713");
+      } else {
+        setLegoVerified(false);
+        toast("No building blocks detected. Retake with your build in frame.");
+      }
+    } catch (err) {
+      console.error("Detection error:", err);
+      setLegoVerified(true);
+      toast("Could not verify. Upload allowed.");
+    }
+    setDetecting(false);
   }
 
 
@@ -203,13 +229,25 @@ export default function UploadScreen() {
           <div className="prev-area vis">
             <div className="prev-wrap">
               <img className="prev-img" src={photo} alt="District" />
-              <div className="prev-badge">CAPTURED &#10003;</div>
+              <div className="prev-badge">
+                {detecting ? "CHECKING..." : legoVerified ? "BUILD DETECTED \u2713" : "CAPTURED"}
+              </div>
             </div>
+            {detecting && (
+              <div style={{ fontSize: 12, color: "var(--acc2)", fontWeight: 800, textAlign: "center" }}>
+                Verifying your build...
+              </div>
+            )}
+            {!detecting && photo && !legoVerified && (
+              <div style={{ fontSize: 12, color: "var(--acc3)", fontWeight: 800, textAlign: "center" }}>
+                No building blocks detected. Retake with your LEGO build in frame.
+              </div>
+            )}
             <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
-              <button className="retake" onClick={() => setPhoto(null)}>
+              <button className="retake" onClick={() => { setPhoto(null); setLegoVerified(false); }}>
                 {"\u21BA"} retake
               </button>
-              <button className="retake" onClick={selectCamera}>
+              <button className="retake" onClick={() => { setPhoto(null); setLegoVerified(false); selectCamera(); }}>
                 {"\u{1F4F7}"} new capture
               </button>
             </div>

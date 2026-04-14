@@ -113,20 +113,22 @@ export default function FacSetupScreen() {
   const allPlayers = (players || []);
   const facPlayer = allPlayers.find((p) => p.isFacilitator);
   const facVote = facPlayer?.scenarioVote || null;
-  const allVoters = allPlayers.filter((p) => p.scenarioVote);
-  const everyoneVoted = allPlayers.length > 0 && allPlayers.every((p) => p.scenarioVote);
 
   // Count votes
   const voteCounts: Record<string, number> = {};
   allPlayers.forEach((p) => { if (p.scenarioVote) voteCounts[p.scenarioVote] = (voteCounts[p.scenarioVote] || 0) + 1; });
   const totalVotes = Object.values(voteCounts).reduce((a, b) => a + b, 0);
   const maxVotes = Math.max(0, ...Object.values(voteCounts));
-  const topScenario = maxVotes > 0 ? Object.entries(voteCounts).sort((a, b) => b[1] - a[1])[0][0] : null;
+  const topScenarios = Object.entries(voteCounts).filter(([, count]) => count === maxVotes).map(([id]) => id);
 
-  async function confirmScenario(scenarioId: string) {
-    if (!sessionId) return;
-    await setScenarioMut({ sessionId, scenario: scenarioId });
-    set({ scenario: scenarioId });
+  // Facilitator closes voting → resolve winner and show result
+  async function closeVotingAndProceed() {
+    if (totalVotes === 0 || !sessionId) return;
+    const winner = topScenarios.length === 1
+      ? topScenarios[0]
+      : topScenarios[Math.floor(Math.random() * topScenarios.length)];
+    await setScenarioMut({ sessionId, scenario: winner });
+    set({ scenario: winner });
   }
 
   return (
@@ -227,9 +229,13 @@ export default function FacSetupScreen() {
                 <div
                   key={s.id}
                   className={`scenario-card${isMyVote ? " selected" : ""}`}
-                  style={{ "--sc-color": s.color } as React.CSSProperties}
+                  style={{
+                    "--sc-color": s.color,
+                    opacity: scenarioConfirmed && currentScenario !== s.id ? 0.35 : 1,
+                    pointerEvents: scenarioConfirmed ? "none" : undefined,
+                  } as React.CSSProperties}
                   onClick={async () => {
-                    if (!facPlayer) return;
+                    if (!facPlayer || scenarioConfirmed) return;
                     await voteScenarioMut({ playerId: facPlayer._id, scenarioId: s.id });
                   }}
                 >
@@ -272,21 +278,29 @@ export default function FacSetupScreen() {
             ))}
           </div>
 
-          {/* CONFIRM BUTTON — always visible when there's a leading scenario */}
-          {topScenario && (
-            <div style={{ textAlign: "center", marginTop: 20 }}>
-              <button
-                className="lb lb-yellow"
-                style={{ padding: "12px 36px", fontSize: 13 }}
-                onClick={() => confirmScenario(topScenario)}
-              >
-                CONFIRM {SCENARIOS.find((s) => s.id === topScenario)?.title.toUpperCase()}
-              </button>
-              <div style={{ fontSize: 10, color: "var(--textd)", marginTop: 6 }}>
-                You can wait for more votes or confirm now
-              </div>
-            </div>
-          )}
+          {/* Status + buttons */}
+          <div style={{ textAlign: "center", marginTop: 20 }}>
+            {(() => {
+              const everyoneVoted = allPlayers.length > 1 && allPlayers.every((p) => p.scenarioVote);
+              return (
+              <>
+                <div style={{ fontSize: 12, color: "var(--textd)", marginBottom: 12 }}>
+                  {totalVotes === 0 ? "Waiting for votes..." : `${totalVotes}/${allPlayers.length} voted`}
+                </div>
+                <button
+                  className={`lb ${everyoneVoted ? "lb-yellow" : "lb-ghost"}`}
+                  disabled={!everyoneVoted}
+                  style={{ padding: "12px 36px", fontSize: 13 }}
+                  onClick={closeVotingAndProceed}
+                >
+                  CLOSE VOTING AND PROCEED
+                </button>
+                <div style={{ fontSize: 10, color: "var(--textd)", marginTop: 6 }}>
+                  {everyoneVoted ? "Everyone has voted. Close voting to decide the scenario and move to card assignment." : "Waiting for everyone to vote."}
+                </div>
+              </>
+            );})()}
+          </div>
         </div>
       )}
 
