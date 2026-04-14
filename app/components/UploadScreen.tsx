@@ -137,10 +137,16 @@ export default function UploadScreen() {
     setMode(null);
     setLegoVerified(false);
 
+    // Skip detection if NEXT_PUBLIC_SKIP_DETECTION is set
+    if (process.env.NEXT_PUBLIC_SKIP_DETECTION) {
+      setLegoVerified(true);
+      setDetecting(false);
+      return;
+    }
+
     // Run building block detection via Convex action
     setDetecting(true);
     try {
-      // Strip the data URL prefix, send only base64
       const base64 = dataUrl.split(",")[1];
       const result = await detectBlocks({ imageBase64: base64 });
       console.log("Detection result:", result);
