@@ -317,3 +317,358 @@ export const LEGO_KIT = [
 ];
 
 export const LEGO_KIT_TOTAL = LEGO_KIT.reduce((sum, p) => sum + p.qty, 0); // 34
+
+// ══════════════════════════════════════════════════════════════
+//  NEW GAME CONSTANTS (redesigned flow)
+// ══════════════════════════════════════════════════════════════
+
+// ── New Phase Flow ───────────────────────────────────────────
+// waiting → pair_build → guess → map_ch1 → map_ch2 → map_ch3 → vote → complete
+
+export const NEW_PHASES = [
+  "waiting",
+  "pair_build",
+  "guess",
+  "map_ch1",
+  "map_ch2",
+  "map_ch3",
+  "vote",
+  "complete",
+] as const;
+
+export type NewPhase = (typeof NEW_PHASES)[number];
+
+// ── Clue Cards ───────────────────────────────────────────────
+// Architect picks 3 of 6 clue cards to guide their builder.
+// Each clue is vague enough to be interpreted multiple ways.
+
+export interface ClueCard {
+  id: string;
+  label: string;         // short name shown on the card face
+  clueText: string;      // the actual hint the builder sees
+  category: "shape" | "feel" | "story";  // helps architect think about variety
+}
+
+export const CLUE_CARDS: ClueCard[] = [
+  // Shape clues — describe physical form
+  { id: "cl_tall",    label: "Reach Up",       clueText: "Whatever you build, it should reach higher than it spreads.", category: "shape" },
+  { id: "cl_wide",    label: "Spread Out",     clueText: "Think flat. Cover ground. Stay low to the earth.", category: "shape" },
+  { id: "cl_enclosed", label: "Seal It In",    clueText: "What's inside matters more than what's outside. Close it off.", category: "shape" },
+  { id: "cl_pointed", label: "Come to a Point", clueText: "Narrow as you go up. End with something sharp or focused.", category: "shape" },
+  { id: "cl_opening", label: "Make a Way In",  clueText: "There must be a clear entrance. A way through, not a wall.", category: "shape" },
+  { id: "cl_dense",   label: "Pack It Tight",  clueText: "Use the smallest space possible. Every piece touching another.", category: "shape" },
+
+  // Feel clues — describe mood or function
+  { id: "cl_safe",    label: "Safe Haven",     clueText: "Someone should feel protected here. Sheltered.", category: "feel" },
+  { id: "cl_exposed", label: "Out in the Open", clueText: "Nothing hidden. Everything visible from every direction.", category: "feel" },
+  { id: "cl_connected", label: "Link Things",  clueText: "This isn't a destination. It's a bridge between two places.", category: "feel" },
+  { id: "cl_strong",  label: "Built to Last",  clueText: "This needs to survive. Make it heavy, sturdy, unmovable.", category: "feel" },
+  { id: "cl_fragile", label: "Handle Gently",  clueText: "Delicate. Balanced. One wrong move and it topples.", category: "feel" },
+  { id: "cl_busy",    label: "Full of Life",   clueText: "Imagine many people moving through this at once. Make room for them.", category: "feel" },
+
+  // Story clues — describe narrative purpose
+  { id: "cl_first",   label: "The Beginning",  clueText: "This is where everything starts. The origin point.", category: "story" },
+  { id: "cl_last",    label: "The End",         clueText: "This is the final stop. Nothing comes after this.", category: "story" },
+  { id: "cl_hidden",  label: "Secret Place",   clueText: "Not everyone knows about this. It's tucked away, hard to find.", category: "story" },
+  { id: "cl_landmark", label: "You Can't Miss It", clueText: "Everyone sees this first. It's the thing you point to from far away.", category: "story" },
+  { id: "cl_gather",  label: "Meeting Point",  clueText: "People come here to decide things together. A center of gravity.", category: "story" },
+  { id: "cl_edge",    label: "On the Border",  clueText: "Right at the edge. Between what's known and what's beyond.", category: "story" },
+];
+
+// ── Abilities ────────────────────────────────────────────────
+// Assigned by facilitator (HR). Some players get abilities, rest are "citizens".
+
+export interface Ability {
+  id: string;
+  label: string;
+  icon: string;          // emoji for badge display
+  description: string;   // what the player sees
+  hrNote: string;        // what the facilitator sees (why to assign this)
+  mechanic: string;      // technical description of the game effect
+}
+
+export const ABILITIES: Ability[] = [
+  {
+    id: "pathfinder",
+    label: "Pathfinder",
+    icon: "\u{1F9ED}",
+    description: "You can see the zone labels on the map. Others see only blank spaces. Guide your team.",
+    hrNote: "Give to someone who needs to speak up more. The team literally cannot place districts without their input.",
+    mechanic: "Zone labels visible only to this player during map_ch1. Others see unlabeled slots.",
+  },
+  {
+    id: "scout",
+    label: "Scout",
+    icon: "\u{1F52D}",
+    description: "You see the next crisis card one chapter before everyone else. Use this knowledge wisely.",
+    hrNote: "Give to someone whose input gets overlooked. They will have information the team needs.",
+    mechanic: "During map_ch1, sees the crisis card that drops in map_ch2. During map_ch2, sees ch3 pattern hint.",
+  },
+  {
+    id: "engineer",
+    label: "Engineer",
+    icon: "\u{1F527}",
+    description: "Your connections can cross the river or hazard zones. Others cannot bridge those gaps.",
+    hrNote: "Give to someone technical who stays quiet. Their ability is powerful but only if they volunteer it.",
+    mechanic: "Connection placement ignores hazard/river restrictions. Others' connections cannot cross these zones.",
+  },
+  {
+    id: "anchor",
+    label: "Anchor",
+    icon: "\u{1F6E1}\uFE0F",
+    description: "Your district is a safe zone. Any district connected to yours is protected from crisis damage.",
+    hrNote: "Give to someone who needs their value recognized. Their mere presence on the map protects others.",
+    mechanic: "Districts adjacent to or connected to Anchor's district are immune to crisis card negative effects.",
+  },
+  {
+    id: "diplomat",
+    label: "Diplomat",
+    icon: "\u{1F91D}",
+    description: "Once per chapter, you can open a 60-second private chat with any one player.",
+    hrNote: "Give to someone who builds relationships. They can broker deals and share info privately.",
+    mechanic: "One-time per chapter: opens a private 60s chat channel with a selected player. Others cannot see it.",
+  },
+];
+
+// ── Crisis Cards ─────────────────────────────────────────────
+// Dropped during map_ch2. One per game. Creates tension and forces collaboration.
+
+export interface CrisisCard {
+  id: string;
+  title: string;
+  icon: string;
+  description: string;   // what players see
+  effect: string;        // mechanical game effect
+  counterplay: string;   // how to mitigate (involves abilities)
+}
+
+export const CRISIS_CARDS: CrisisCard[] = [
+  {
+    id: "cr_flood",
+    title: "Rising Waters",
+    icon: "\u{1F30A}",
+    description: "Floodwaters surge through the lower zones. Districts in edge zones without connections are swept away.",
+    effect: "Edge-zone districts with fewer than 2 connections lose one connection.",
+    counterplay: "Anchor protects adjacent districts. Engineer can build emergency bridges across water.",
+  },
+  {
+    id: "cr_quake",
+    title: "Ground Shift",
+    icon: "\u{1F30B}",
+    description: "The ground shakes. Isolated districts crack apart. Only connected clusters survive intact.",
+    effect: "Any district with 0 connections is disabled (greyed out, cannot be voted on).",
+    counterplay: "Anchor's safe zone holds. Diplomat can negotiate emergency connection swaps.",
+  },
+  {
+    id: "cr_blackout",
+    title: "Signal Lost",
+    icon: "\u{1F4E1}",
+    description: "Communications fail. For 90 seconds, the group chat is disabled. Only Diplomat can talk.",
+    effect: "Group chat disabled for 90 seconds. Diplomat's private chat still works.",
+    counterplay: "Diplomat becomes the only communication channel. Scout warned the team in advance.",
+  },
+  {
+    id: "cr_split",
+    title: "The Divide",
+    icon: "\u26A1",
+    description: "A rift opens across the map. Connections crossing the center line are severed.",
+    effect: "All connections crossing the map centerline are removed.",
+    counterplay: "Engineer can rebuild across the rift. Pathfinder can see safe crossing points.",
+  },
+];
+
+// ── Power Cards ──────────────────────────────────────────────
+// Dealt to 2 players privately during map_ch2. One-time use.
+
+export interface PowerCard {
+  id: string;
+  title: string;
+  icon: string;
+  description: string;   // what the player sees
+  effect: string;        // mechanical game effect
+}
+
+export const POWER_CARDS: PowerCard[] = [
+  {
+    id: "pw_swap",
+    title: "Trade Places",
+    icon: "\u{1F500}",
+    description: "Swap the position of any two districts on the map.",
+    effect: "Select two districts. Their map positions swap instantly.",
+  },
+  {
+    id: "pw_shield",
+    title: "Force Field",
+    icon: "\u{1F6E1}\uFE0F",
+    description: "Protect one district from the next crisis effect.",
+    effect: "Selected district is immune to the current/next crisis card.",
+  },
+  {
+    id: "pw_double",
+    title: "Double Link",
+    icon: "\u{1F517}",
+    description: "Place two connections at once instead of one.",
+    effect: "Player places two connections in a single turn.",
+  },
+  {
+    id: "pw_reveal",
+    title: "Insider Info",
+    icon: "\u{1F441}\uFE0F",
+    description: "See the hidden pattern before anyone else. You have 30 seconds to prepare.",
+    effect: "Reveals the ch3 hidden pattern 30 seconds before the team sees it.",
+  },
+  {
+    id: "pw_move",
+    title: "Relocate",
+    icon: "\u{1F4CD}",
+    description: "Move your own district to any empty zone on the map.",
+    effect: "Player's district is lifted and placed in a new empty slot.",
+  },
+];
+
+// ── Vote Categories ──────────────────────────────────────────
+// Players vote in 4 categories during the vote phase.
+
+export interface VoteCategory {
+  id: string;
+  label: string;
+  icon: string;
+  question: string;  // what players see
+}
+
+export const VOTE_CATEGORIES: VoteCategory[] = [
+  {
+    id: "vc_mvp",
+    label: "Team MVP",
+    icon: "\u{1F3C6}",
+    question: "Who made the biggest impact on the team's success?",
+  },
+  {
+    id: "vc_creative",
+    label: "Most Creative",
+    icon: "\u{1F3A8}",
+    question: "Whose build or strategy surprised you the most?",
+  },
+  {
+    id: "vc_clutch",
+    label: "Clutch Player",
+    icon: "\u26A1",
+    question: "Who stepped up at the most critical moment?",
+  },
+  {
+    id: "vc_communicator",
+    label: "Best Communicator",
+    icon: "\u{1F4AC}",
+    question: "Who kept the team informed and aligned?",
+  },
+];
+
+// ── Story Text ───────────────────────────────────────────────
+// Narration shown at each chapter transition. Keyed by scenario + chapter.
+
+export const STORY_TEXT: Record<string, Record<string, { title: string; narration: string }>> = {
+  rising_tides: {
+    map_ch1: {
+      title: "Chapter 1: Foundation",
+      narration: "The floodwaters have receded, but the ground is unstable. Place your districts carefully. Not every zone is safe, and not everyone can see what you see.",
+    },
+    map_ch2: {
+      title: "Chapter 2: Connections",
+      narration: "The districts stand alone. Now build the roads, bridges, and paths that bind them together. But resources are limited, and a storm is coming.",
+    },
+    map_ch3: {
+      title: "Chapter 3: Rally",
+      narration: "The crisis hit hard, but your city still stands. A hidden pattern has emerged in the ruins. Rearrange your connections to match it, and the city will be reborn.",
+    },
+  },
+  last_orbit: {
+    map_ch1: {
+      title: "Chapter 1: Foundation",
+      narration: "The station hull is exposed to the void. Place your modules where they can survive. Not every bay is pressurized, and not everyone can read the schematics.",
+    },
+    map_ch2: {
+      title: "Chapter 2: Connections",
+      narration: "Modules float in isolation. Build the corridors and conduits that make this a station, not a graveyard. Power is limited, and something is approaching.",
+    },
+    map_ch3: {
+      title: "Chapter 3: Rally",
+      narration: "The impact shook the station to its core, but you held. A signal pattern has appeared on scanners. Realign your corridors to match it, and the station powers up.",
+    },
+  },
+  deep_current: {
+    map_ch1: {
+      title: "Chapter 1: Foundation",
+      narration: "Three kilometers down, the pressure is crushing. Place your sectors on stable ground. Not every zone can hold, and not everyone can see through the dark.",
+    },
+    map_ch2: {
+      title: "Chapter 2: Connections",
+      narration: "Sectors sit in silence on the seafloor. Build the tunnels and current channels that connect them. Resources are thin, and the deep is restless.",
+    },
+    map_ch3: {
+      title: "Chapter 3: Rally",
+      narration: "The tremor cracked the seabed, but your settlement held. A bioluminescent pattern has appeared below. Reroute your channels to follow it, and the seafloor lights up.",
+    },
+  },
+  roothold: {
+    map_ch1: {
+      title: "Chapter 1: Foundation",
+      narration: "The canopy is dense and the forest floor is tangled. Place your outposts where the roots will hold. Not every clearing is stable, and not everyone knows the forest's paths.",
+    },
+    map_ch2: {
+      title: "Chapter 2: Connections",
+      narration: "Outposts dot the forest but stand alone. Build the vine bridges and root paths that connect them. Materials are scarce, and something stirs in the undergrowth.",
+    },
+    map_ch3: {
+      title: "Chapter 3: Rally",
+      narration: "The storm tore through the canopy, but the roots held. An ancient growth pattern has surfaced in the bark. Reroute your paths to follow it, and the forest awakens.",
+    },
+  },
+};
+
+// ── Hidden Patterns ──────────────────────────────────────────
+// Revealed in map_ch3. Players rearrange connections to match.
+// Each pattern is a set of required connection pairs (slot IDs).
+
+export interface HiddenPattern {
+  id: string;
+  label: string;
+  description: string;
+  // Required connections expressed as pairs of slot indices (0-8 for 9-slot grid)
+  connections: [number, number][];
+}
+
+export const HIDDEN_PATTERNS: HiddenPattern[] = [
+  {
+    id: "hp_star",
+    label: "The Star",
+    description: "All outer zones connect to the center. A star emerges.",
+    connections: [[0, 4], [1, 4], [2, 4], [3, 4], [5, 4], [6, 4], [7, 4], [8, 4]],
+  },
+  {
+    id: "hp_ring",
+    label: "The Ring",
+    description: "The outer zones form an unbroken ring around the center.",
+    connections: [[0, 1], [1, 2], [2, 5], [5, 8], [8, 7], [7, 6], [6, 3], [3, 0]],
+  },
+  {
+    id: "hp_bridge",
+    label: "The Bridge",
+    description: "Two clusters on opposite sides, linked by a single chain through the middle.",
+    connections: [[0, 1], [1, 4], [4, 7], [7, 8], [2, 5], [3, 6]],
+  },
+  {
+    id: "hp_tree",
+    label: "The Tree",
+    description: "Roots at the bottom spread upward through a trunk to branches at the top.",
+    connections: [[6, 7], [7, 8], [7, 4], [4, 1], [4, 3], [4, 5], [1, 0], [1, 2]],
+  },
+];
+
+// ── Pair Build Timing ────────────────────────────────────────
+// Synced timing for the 3 clue rounds during pair_build phase.
+
+export const PAIR_BUILD_ROUNDS = [
+  { round: 1, clueSeconds: 45, buildSeconds: 180, reviewSeconds: 30, label: "First Clue" },
+  { round: 2, clueSeconds: 30, buildSeconds: 120, reviewSeconds: 30, label: "Second Clue" },
+  { round: 3, clueSeconds: 30, buildSeconds: 120, reviewSeconds: 0,  label: "Final Clue" },
+] as const;

@@ -10,6 +10,9 @@
 
 import type * as detectLego from "../detectLego.js";
 import type * as game from "../game.js";
+import type * as mapPhase from "../mapPhase.js";
+import type * as pairBuild from "../pairBuild.js";
+import type * as voting from "../voting.js";
 
 import type {
   ApiFromModules,
@@ -20,6 +23,9 @@ import type {
 declare const fullApi: ApiFromModules<{
   detectLego: typeof detectLego;
   game: typeof game;
+  mapPhase: typeof mapPhase;
+  pairBuild: typeof pairBuild;
+  voting: typeof voting;
 }>;
 
 /**

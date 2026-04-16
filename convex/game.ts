@@ -1,6 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
-import { CARDS } from "../lib/constants";
+import { CARDS, NEW_PHASES, PAIR_BUILD_ROUNDS } from "../lib/constants";
 
 // ── Helper: generate random 5-char code ──
 function makeCode() {
@@ -258,5 +258,83 @@ export const removePlayer = mutation({
   args: { playerId: v.id("players") },
   handler: async (ctx, { playerId }) => {
     await ctx.db.delete(playerId);
+  },
+});
+
+// ══════════════════════════════
+//  NEW GAME MUTATIONS (redesigned flow)
+// ══════════════════════════════
+
+// Assign ability + district name to a player (facilitator action during setup)
+export const assignRole = mutation({
+  args: {
+    playerId: v.id("players"),
+    ability: v.optional(v.string()),
+    districtName: v.string(),
+  },
+  handler: async (ctx, { playerId, ability, districtName }) => {
+    await ctx.db.patch(playerId, { ability: ability ?? undefined, districtName });
+  },
+});
+
+// Generate circular architect/builder pairings: A→B, B→C, ..., last→A
+export const generatePairings = mutation({
+  args: { sessionId: v.id("sessions") },
+  handler: async (ctx, { sessionId }) => {
+    const allPlayers = await ctx.db
+      .query("players")
+      .withIndex("by_session", (q) => q.eq("sessionId", sessionId))
+      .collect();
+    const nonFac = allPlayers.filter((p) => !p.isFacilitator);
+    if (nonFac.length < 2) return { success: false, error: "Need at least 2 players for pairings." };
+
+    // Shuffle for randomness
+    const shuffled = [...nonFac].sort(() => Math.random() - 0.5);
+
+    // Circular chain: player[i] architects for player[(i+1) % n]
+    for (let i = 0; i < shuffled.length; i++) {
+      const architect = shuffled[i];
+      const builder = shuffled[(i + 1) % shuffled.length];
+      await ctx.db.patch(architect._id, { architectFor: builder._id });
+      await ctx.db.patch(builder._id, { builderFor: architect._id });
+    }
+
+    return { success: true, pairCount: shuffled.length };
+  },
+});
+
+// Advance through the new phase flow: waiting → pair_build → guess → map_ch1 → map_ch2 → map_ch3 → vote → complete
+export const advanceNewPhase = mutation({
+  args: { sessionId: v.id("sessions") },
+  handler: async (ctx, { sessionId }) => {
+    const session = await ctx.db.get(sessionId);
+    if (!session) return;
+    const idx = NEW_PHASES.indexOf(session.phase as typeof NEW_PHASES[number]);
+    if (idx < 0 || idx >= NEW_PHASES.length - 1) return;
+
+    const nextPhase = NEW_PHASES[idx + 1];
+    const patch: Record<string, unknown> = { phase: nextPhase };
+
+    // Entering pair_build: seed round 1, clue stage
+    if (nextPhase === "pair_build") {
+      patch.buildSubPhase = 1;
+      patch.buildStage = "clue";
+      patch.subPhaseDeadline = Date.now() + PAIR_BUILD_ROUNDS[0].clueSeconds * 1000;
+    } else {
+      // Clear any lingering pair-build state on exit
+      patch.buildSubPhase = undefined;
+      patch.buildStage = undefined;
+      patch.subPhaseDeadline = undefined;
+    }
+
+    await ctx.db.patch(sessionId, patch);
+  },
+});
+
+// Set phase directly (useful for facilitator jumping to specific phase)
+export const setPhase = mutation({
+  args: { sessionId: v.id("sessions"), phase: v.string() },
+  handler: async (ctx, { sessionId, phase }) => {
+    await ctx.db.patch(sessionId, { phase });
   },
 });
