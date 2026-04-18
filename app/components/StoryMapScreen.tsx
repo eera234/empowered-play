@@ -299,7 +299,10 @@ export default function StoryMapScreen() {
   async function handleAdvance() {
     if (!sessionId) return;
     if (phase === "map_ch1" && !allPlaced) {
-      toast(`Still ${unplaced.length} unplaced — advance anyway?`);
+      const proceed = typeof window !== "undefined"
+        ? window.confirm(`${unplaced.length} ${scenarioData.terminology.district}${unplaced.length !== 1 ? "s" : ""} still unplaced. Advance to Chapter 2 anyway?`)
+        : true;
+      if (!proceed) return;
     }
     await advanceNewPhase({ sessionId });
   }

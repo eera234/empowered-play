@@ -26,7 +26,11 @@ function Timer({ deadline }: { deadline: number | undefined }) {
   const urgent = remaining <= 30;
 
   return (
-    <span className={urgent ? "text-[var(--acc3)]" : "text-white"} style={{ fontFamily: "'Black Han Sans', sans-serif", fontSize: 22, letterSpacing: 2 }}>
+    <span style={{
+      fontFamily: "'Black Han Sans', sans-serif", fontSize: 22, letterSpacing: 2,
+      color: urgent ? "var(--acc3)" : "white",
+      transition: "color .2s",
+    }}>
       {mins}:{secs.toString().padStart(2, "0")}
     </span>
   );
