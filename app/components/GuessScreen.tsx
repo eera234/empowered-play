@@ -94,13 +94,18 @@ export default function GuessScreen() {
   const revealMode = allPlayersDone;
 
   // Trigger staggered reveal animation
-  useMemo(() => {
+  useEffect(() => {
     if (!revealMode) return;
     if (revealedIndex >= nonFac.length - 1) return;
     const t = setTimeout(() => setRevealedIndex((prev) => Math.min(prev + 1, nonFac.length - 1)), 350);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealMode, revealedIndex, nonFac.length]);
+
+  // Reset reveal animation when we re-enter reveal mode
+  useEffect(() => {
+    if (!revealMode) setRevealedIndex(-1);
+    else if (revealedIndex < 0) setRevealedIndex(0);
+  }, [revealMode, revealedIndex]);
 
   async function handleAssign(targetId: Id<"players">, name: string) {
     if (!sessionId || !playerId) return;
@@ -110,13 +115,6 @@ export default function GuessScreen() {
     } catch {
       toast("Could not save guess. Try again.");
     }
-  }
-
-  async function handleClear(targetId: Id<"players">) {
-    if (!sessionId || !playerId) return;
-    // Assigning empty string removes functionally — but submitGuess doesn't support delete.
-    // For now, we'll just close the picker. Users can pick a different name to change.
-    setPickerPhotoId(null);
   }
 
   async function handleAdvance() {

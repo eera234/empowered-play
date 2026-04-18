@@ -3,10 +3,14 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { SCENARIOS } from "../../lib/constants";
+import { SCENARIOS, ABILITIES } from "../../lib/constants";
 import { useGame } from "../GameContext";
 import BrandBar from "./BrandBar";
 import { SCENARIO_ILLUSTRATIONS } from "./EntryScreen";
+
+const ABILITY_COLORS: Record<string, string> = {
+  pathfinder: "#4FC3F7", scout: "#B388FF", engineer: "#FF7043", anchor: "#66BB6A", diplomat: "#FFD740",
+};
 
 export default function WaitScreen() {
   const { name, sessionId, sessionCode, playerId } = useGame();
@@ -150,6 +154,10 @@ export default function WaitScreen() {
 
   // Scenario confirmed
   const chosenScenario = SCENARIOS.find((s) => s.id === session?.scenario);
+  const myAbility = me?.ability ? ABILITIES.find((a) => a.id === me.ability) : null;
+  const abilityColor = me?.ability ? ABILITY_COLORS[me.ability] : null;
+  const hasRole = !!(me?.districtName || me?.ability);
+
   return (
     <div className="screen active" id="s-wait">
       <BrandBar />
@@ -164,6 +172,58 @@ export default function WaitScreen() {
             </strong>
           </div>
         </div>
+
+        {/* Role card — appears once the facilitator sends roles */}
+        {hasRole && (
+          <div style={{
+            margin: "16px auto 8px", maxWidth: 360,
+            background: "rgba(255,255,255,.03)",
+            border: `1px solid ${abilityColor ? abilityColor + "44" : "var(--border)"}`,
+            borderRadius: "var(--brick-radius)",
+            padding: "14px 16px",
+            animation: "fadeIn .5s ease-out",
+          }}>
+            <div style={{
+              fontFamily: "'Black Han Sans', sans-serif", fontSize: 10,
+              letterSpacing: 2, color: "var(--textd)", textTransform: "uppercase",
+            }}>
+              YOUR ROLE
+            </div>
+            {me?.districtName && chosenScenario && (
+              <div style={{ marginTop: 6 }}>
+                <div style={{ fontSize: 10, color: "var(--textdd)", letterSpacing: 1, textTransform: "uppercase", fontWeight: 800 }}>
+                  {chosenScenario.terminology.district}
+                </div>
+                <div style={{ fontSize: 18, fontWeight: 900, color: chosenScenario.color }}>
+                  {me.districtName}
+                </div>
+              </div>
+            )}
+            {myAbility && (
+              <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10,
+                padding: "8px 10px", borderRadius: 8,
+                background: `${abilityColor}15`,
+                border: `1px solid ${abilityColor}33`,
+              }}>
+                <span style={{ fontSize: 22 }}>{myAbility.icon}</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 900, color: abilityColor || "white" }}>
+                    {myAbility.label}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--textd)", lineHeight: 1.4 }}>
+                    {myAbility.description}
+                  </div>
+                </div>
+              </div>
+            )}
+            {!myAbility && (
+              <div style={{ marginTop: 10, fontSize: 11, color: "var(--textd)", fontStyle: "italic" }}>
+                Citizen {"\u2014"} no special ability, but the team needs you.
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="wait-players">
           {otherPlayers.map((p) => (
             <div key={p._id} className="wp-chip">
@@ -172,7 +232,11 @@ export default function WaitScreen() {
             </div>
           ))}
         </div>
-        <div className="wait-status">Waiting for facilitator to assign cards...</div>
+        <div className="wait-status">
+          {hasRole
+            ? "Roles assigned. Waiting for facilitator to start..."
+            : "Waiting for facilitator to assign roles..."}
+        </div>
       </div>
     </div>
   );
