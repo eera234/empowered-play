@@ -39,7 +39,7 @@ const CAT_COLORS: Record<string, string> = { shape: "#4FC3F7", feel: "#FF7043", 
 //  MAIN COMPONENT
 // ══════════════════════════════
 export default function PairBuildScreen() {
-  const { sessionId, sessionCode, playerId, name, role } = useGame();
+  const { sessionId, sessionCode, playerId, role } = useGame();
   const session = useQuery(api.game.getSession, sessionCode ? { code: sessionCode } : "skip");
   const players = useQuery(api.game.getPlayers, sessionId ? { sessionId } : "skip");
   const sentClues = useQuery(api.pairBuild.getSentClues, sessionId ? { sessionId } : "skip");

@@ -3,41 +3,25 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { Id } from "../../convex/_generated/dataModel";
 import { toast } from "sonner";
 import { useGame } from "../GameContext";
 import BrandBar from "./BrandBar";
-import { CARDS, SCENARIOS, ABILITIES, getThemedCard } from "../../lib/constants";
-import CardIcon from "./CardIcon";
+import { SCENARIOS, ABILITIES } from "../../lib/constants";
 import { SCENARIO_ILLUSTRATIONS } from "./EntryScreen";
 
-type AssignMode =
-  | { step: "idle" }
-  | { step: "card_selected"; cardIndex: number }
-  | { step: "player_selected"; playerId: Id<"players"> };
-
 export default function FacSetupScreen() {
-  const { sessionCode, sessionId, scenario, set, goTo } = useGame();
+  const { sessionCode, sessionId, scenario, set } = useGame();
   const session = useQuery(api.game.getSession, sessionCode ? { code: sessionCode } : "skip");
   const currentScenario = scenario || session?.scenario || "";
   const scenarioConfirmed = currentScenario !== "";
   const scenarioData = SCENARIOS.find((s) => s.id === currentScenario) || SCENARIOS[0];
-  const themedCards = CARDS.map((c) => getThemedCard(c, scenarioData));
   const players = useQuery(api.game.getPlayers, sessionId ? { sessionId } : "skip");
-  const assignCard = useMutation(api.game.assignCard);
-  const advancePhase = useMutation(api.game.advancePhase);
   const removePlayer = useMutation(api.game.removePlayer);
   const setScenarioMut = useMutation(api.game.setScenario);
-  // New game mutations
   const assignRole = useMutation(api.game.assignRole);
   const generatePairings = useMutation(api.game.generatePairings);
   const advanceNewPhase = useMutation(api.game.advanceNewPhase);
 
-  const [expandedCard, setExpandedCard] = useState<number | null>(null);
-  const [assignMode, setAssignMode] = useState<AssignMode>({ step: "idle" });
-  const [pendingAssignments, setPendingAssignments] = useState<Record<string, number>>({});
-
-  // New flow: local state for ability + district assignments before sending
   const [abilityAssignments, setAbilityAssignments] = useState<Record<string, string>>({});
   const [districtAssignments, setDistrictAssignments] = useState<Record<string, string>>({});
   const [pairingsGenerated, setPairingsGenerated] = useState(false);
@@ -45,79 +29,6 @@ export default function FacSetupScreen() {
   const [expandedAbility, setExpandedAbility] = useState<string | null>(null);
 
   const nonFac = (players || []).filter((p) => !p.isFacilitator);
-  const assignedCount = nonFac.filter((p) => p.cardSent).length;
-
-  // Cards that are already sent or pending
-  const takenCardIndices = new Set<number>();
-  nonFac.forEach((p) => {
-    if (p.cardSent && p.cardIndex != null) takenCardIndices.add(p.cardIndex);
-  });
-  Object.values(pendingAssignments).forEach((ci) => takenCardIndices.add(ci));
-
-  function handleCardTap(cardIndex: number) {
-    if (takenCardIndices.has(cardIndex)) return;
-    if (assignMode.step === "player_selected") {
-      setPendingAssignments((prev) => ({
-        ...prev,
-        [assignMode.playerId]: cardIndex,
-      }));
-      setAssignMode({ step: "idle" });
-      toast(`Card ready. Hit SEND to confirm.`);
-    } else if (assignMode.step === "card_selected" && assignMode.cardIndex === cardIndex) {
-      // Toggle off if clicking the same card
-      setAssignMode({ step: "idle" });
-    } else {
-      setAssignMode({ step: "card_selected", cardIndex });
-    }
-  }
-
-  function handlePlayerTap(playerId: Id<"players">) {
-    const player = nonFac.find((p) => p._id === playerId);
-    if (player?.cardSent) return;
-
-    if (assignMode.step === "card_selected") {
-      // Card was selected first, now assign to this player
-      setPendingAssignments((prev) => ({
-        ...prev,
-        [playerId]: assignMode.cardIndex,
-      }));
-      setAssignMode({ step: "idle" });
-      toast(`Card ready — hit SEND to confirm`);
-    } else {
-      setAssignMode({ step: "player_selected", playerId });
-    }
-  }
-
-  async function handleSendCard(playerId: Id<"players">) {
-    const cardIndex = pendingAssignments[playerId];
-    if (cardIndex == null) return;
-    await assignCard({ playerId, cardIndex });
-    setPendingAssignments((prev) => {
-      const next = { ...prev };
-      delete next[playerId];
-      return next;
-    });
-    toast(`Card sent!`);
-  }
-
-  function handleUnassign(playerId: string) {
-    setPendingAssignments((prev) => {
-      const next = { ...prev };
-      delete next[playerId];
-      return next;
-    });
-  }
-
-  async function handleAdvance() {
-    if (!sessionId) return;
-    if (assignedCount < nonFac.length) {
-      toast("Assign and send cards to all players first");
-      return;
-    }
-    await advancePhase({ sessionId });
-  }
-
-  const allSent = nonFac.length > 0 && nonFac.every((p) => p.cardSent);
 
   // Voting logic
   const voteScenarioMut = useMutation(api.game.voteScenario);
@@ -192,62 +103,6 @@ export default function FacSetupScreen() {
   return (
     <div className="screen active" id="s-fac-setup">
       <BrandBar badge="FACILITATOR" backTo="s-entry" />
-
-      {/* Card detail modal */}
-      {expandedCard !== null && (
-        <div className="card-modal-overlay" onClick={() => setExpandedCard(null)}>
-          <div className="card-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="card-modal-studs">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="lego-stud-3d" style={{ width: 16, height: 16 }} />
-              ))}
-            </div>
-            <div
-              className="card-modal-accent"
-              style={{ background: themedCards[expandedCard].color }}
-            />
-            <div className="card-modal-body">
-              <div className="card-modal-icon"><CardIcon icon={themedCards[expandedCard].icon} size={52} /></div>
-              <div
-                className="card-modal-title"
-                style={{ color: themedCards[expandedCard].color }}
-              >
-                {themedCards[expandedCard].title}
-              </div>
-              <div className="card-modal-section">
-                <div className="card-modal-section-lbl">SHAPE CONSTRAINT</div>
-                <div className="card-modal-rule">{themedCards[expandedCard].shapeHint}</div>
-              </div>
-              <div className="card-modal-section">
-                <div className="card-modal-section-lbl">MAP PLACEMENT</div>
-                <div className="card-modal-rule">{themedCards[expandedCard].mapRule}</div>
-              </div>
-              <div className="card-modal-section">
-                <div className="card-modal-section-lbl" style={{ color: "var(--acc2)" }}>
-                  BUILD TIME: {themedCards[expandedCard].buildTime} MINUTES
-                </div>
-              </div>
-              <div className="card-modal-section">
-                <div className="card-modal-section-lbl card-modal-hr-lbl">
-                  HR INSIGHT
-                </div>
-                <div className="card-modal-hr">{themedCards[expandedCard].hrNote}</div>
-              </div>
-              <div className="card-modal-hint">
-                {takenCardIndices.has(expandedCard)
-                  ? "This card is already assigned"
-                  : "Close this and tap a card, then tap a player to assign"}
-              </div>
-            </div>
-            <button
-              className="card-modal-close"
-              onClick={() => setExpandedCard(null)}
-            >
-              CLOSE
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Voting phase — shown before scenario is confirmed */}
       {!scenarioConfirmed && (
