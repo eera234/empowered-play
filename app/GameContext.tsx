@@ -28,10 +28,6 @@ interface GameState {
   photo: string | null;
   distName: string;
   scenario: string;
-  // New fields for redesigned game (all optional, coexist with old flow)
-  myAbility: string | null;         // ability ID or null (citizen)
-  architectForId: Id<"players"> | null;  // who I give clues to
-  builderForId: Id<"players"> | null;    // who gives clues to me
 }
 
 interface GameContextValue extends GameState {
@@ -106,9 +102,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     photo: null,
     distName: "",
     scenario: "",
-    myAbility: null,
-    architectForId: null,
-    builderForId: null,
   });
 
   // Restore from localStorage AFTER hydration to avoid mismatch
