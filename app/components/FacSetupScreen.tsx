@@ -37,9 +37,6 @@ export default function FacSetupScreen() {
   const [assignMode, setAssignMode] = useState<AssignMode>({ step: "idle" });
   const [pendingAssignments, setPendingAssignments] = useState<Record<string, number>>({});
 
-  // Game mode toggle: "classic" (old card flow) or "new" (pair build flow)
-  const [gameMode, setGameMode] = useState<"classic" | "new">("new");
-
   // New flow: local state for ability + district assignments before sending
   const [abilityAssignments, setAbilityAssignments] = useState<Record<string, string>>({});
   const [districtAssignments, setDistrictAssignments] = useState<Record<string, string>>({});
@@ -145,9 +142,9 @@ export default function FacSetupScreen() {
     set({ scenario: winner });
   }
 
-  // Auto-assign district names to players when they join (new flow)
+  // Auto-assign district names to players when they join
   useEffect(() => {
-    if (!scenarioConfirmed || gameMode !== "new") return;
+    if (!scenarioConfirmed) return;
     const names = scenarioData.districtNames;
     const updated: Record<string, string> = { ...districtAssignments };
     nonFac.forEach((p, i) => {
@@ -157,7 +154,7 @@ export default function FacSetupScreen() {
     });
     setDistrictAssignments(updated);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nonFac.length, scenarioConfirmed, gameMode]);
+  }, [nonFac.length, scenarioConfirmed]);
 
   // New flow: send all role assignments to Convex
   async function handleSendRoles() {
@@ -412,7 +409,7 @@ export default function FacSetupScreen() {
       })()}
 
       {/* NEW FLOW: Role assignment + pairing */}
-      {scenarioConfirmed && gameMode === "new" && (
+      {scenarioConfirmed && (
         <div className="fac-layout">
           <div className="fac-left">
             <div className="fac-session-box">
@@ -710,206 +707,6 @@ export default function FacSetupScreen() {
         </div>
       )}
 
-      {/* CLASSIC FLOW: Card assignment — shown after scenario is confirmed */}
-      {scenarioConfirmed && gameMode === "classic" && <div className="fac-layout">
-        {/* Left: Session info + Players */}
-        <div className="fac-left">
-          <div className="fac-session-box">
-            <div className="fac-session-studs">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="lego-stud-3d" style={{ width: 18, height: 18 }} />
-              ))}
-            </div>
-            <div className="fac-session-label">SESSION CODE</div>
-            <div className="fac-session-code">{sessionCode}</div>
-            <div className="fac-session-hint">
-              Share this code with your team
-            </div>
-          </div>
-
-          <div className="fac-players-section">
-            <div className="fac-section-header">
-              <div className="slbl">
-                PLAYERS ({nonFac.length}/8)
-              </div>
-              {assignMode.step === "card_selected" && (
-                <div className="fac-assign-hint">
-                  Now tap a player to assign the card
-                </div>
-              )}
-            </div>
-
-            {nonFac.length === 0 && (
-              <div className="fac-empty-players">
-                <div className="fac-empty-icon">
-                  <div className="fac-empty-stud" />
-                  <div className="fac-empty-stud" />
-                </div>
-                <div>Waiting for players to join...</div>
-              </div>
-            )}
-
-            <div className="fac-player-list">
-              {nonFac.map((p) => {
-                const pendingCard = pendingAssignments[p._id];
-                const assignedCard =
-                  p.cardSent && p.cardIndex != null ? themedCards[p.cardIndex] : null;
-                const pendingCardData =
-                  pendingCard != null ? themedCards[pendingCard] : null;
-                const isTargeted =
-                  assignMode.step === "player_selected" &&
-                  assignMode.playerId === p._id;
-
-                return (
-                  <div
-                    key={p._id}
-                    className={`fac-player-row${isTargeted ? " targeted" : ""}${p.cardSent ? " sent" : ""}`}
-                    onClick={() => handlePlayerTap(p._id)}
-                  >
-                    <div className="fac-player-avatar">{p.name[0].toUpperCase()}</div>
-                    <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <div className="fac-player-name">{p.name}</div>
-                        {assignedCard && (
-                          <div className="fac-player-card-tag" style={{ borderColor: assignedCard.color + "44", color: assignedCard.color }}>
-                            <CardIcon icon={assignedCard.icon} size={12} /> {assignedCard.title}
-                          </div>
-                        )}
-                        {pendingCardData && !p.cardSent && (
-                          <div className="fac-player-card-tag pending" style={{ borderColor: pendingCardData.color + "44", color: pendingCardData.color }}>
-                            <CardIcon icon={pendingCardData.icon} size={12} /> {pendingCardData.title}
-                          </div>
-                        )}
-                        {p.cardSent && <div className="fac-sent-badge" style={{ marginLeft: "auto" }}>SENT</div>}
-                      </div>
-                      {!p.cardSent && (
-                        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                          {!assignedCard && !pendingCardData && (
-                            <div className="fac-player-no-card">Tap a card, then this player</div>
-                          )}
-                          {pendingCardData && (
-                            <>
-                              <button
-                                className="lb lb-green"
-                                style={{ fontSize: 9, padding: "4px 12px", letterSpacing: 1 }}
-                                onClick={(e) => { e.stopPropagation(); handleSendCard(p._id); }}
-                              >
-                                SEND
-                              </button>
-                              <button className="fac-undo-btn" onClick={(e) => { e.stopPropagation(); handleUnassign(p._id); }}>UNDO</button>
-                            </>
-                          )}
-                          <button
-                            className="fac-undo-btn"
-                            style={{ marginLeft: "auto", opacity: 0.35, fontSize: 9 }}
-                            onClick={(e) => { e.stopPropagation(); if (confirm(`Remove ${p.name}?`)) { removePlayer({ playerId: p._id }); toast(`${p.name} removed`); } }}
-                          >
-                            REMOVE
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Advance box */}
-          <div className="fac-advance-box">
-            <div className="fac-advance-progress">
-              <div className="fac-advance-bar">
-                <div
-                  className="fac-advance-fill"
-                  style={{
-                    width: nonFac.length
-                      ? `${(assignedCount / nonFac.length) * 100}%`
-                      : "0%",
-                  }}
-                />
-              </div>
-              <div className="fac-advance-count">
-                {assignedCount}/{nonFac.length} cards sent
-              </div>
-            </div>
-            <button
-              className={`lb ${allSent ? "lb-yellow" : "lb-ghost"} fac-advance-btn`}
-              disabled={!allSent}
-              onClick={handleAdvance}
-            >
-              {allSent
-                ? "START THE GAME \u2192"
-                : "SEND ALL CARDS TO START"}
-            </button>
-          </div>
-        </div>
-
-        {/* Right: Card grid */}
-        <div className="fac-right">
-          <div className="fac-cards-header">
-            <div className="slbl">CONSTRAINT CARDS</div>
-            <div className="fac-cards-sub">
-              Tap to read details. Tap a card then a player to assign it.
-            </div>
-          </div>
-          <div className="fac-card-grid">
-            {themedCards.map((c, i) => {
-              const taken = takenCardIndices.has(i);
-              const tooFewPlayers = c.minPlayers > nonFac.length;
-              const unavailable = taken || tooFewPlayers;
-              const isSelected =
-                assignMode.step === "card_selected" &&
-                assignMode.cardIndex === i;
-
-              return (
-                <div
-                  key={c.id}
-                  className={`fac-card${unavailable ? " taken" : ""}${isSelected ? " selected" : ""}`}
-                  style={{
-                    "--card-color": c.color,
-                  } as React.CSSProperties}
-                  onClick={() => !unavailable && handleCardTap(i)}
-                >
-                  <div
-                    className="fac-card-top"
-                    style={{ background: c.color }}
-                  >
-                    <div className="fac-card-studs-row">
-                      <div className="lego-stud-3d" style={{ width: 12, height: 12 }} />
-                      <div className="lego-stud-3d" style={{ width: 12, height: 12 }} />
-                      <div className="lego-stud-3d" style={{ width: 12, height: 12 }} />
-                    </div>
-                    <div className="fac-card-icon"><CardIcon icon={c.icon} size={56} /></div>
-                    {taken && <div className="fac-card-taken-overlay">ASSIGNED</div>}
-                    {!taken && tooFewPlayers && <div className="fac-card-taken-overlay">NEEDS {c.minPlayers}+ PLAYERS</div>}
-                    {isSelected && (
-                      <div className="fac-card-selected-ring" />
-                    )}
-                  </div>
-                  <div className="fac-card-bottom">
-                    <div className="fac-card-title">{c.title}</div>
-                    <div className="fac-card-hr-preview">{c.hrNote}</div>
-                    <div className="fac-card-meta">
-                      <span>{c.buildTime} min</span>
-                      <span style={{ opacity: 0.4 }}>&middot;</span>
-                      <span>{c.shape.replace("-", " ")}</span>
-                    </div>
-                    <button
-                      className="fac-card-expand"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setExpandedCard(i);
-                      }}
-                    >
-                      VIEW DETAILS
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>}
     </div>
   );
 }

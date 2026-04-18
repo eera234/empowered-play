@@ -138,9 +138,21 @@ export default function GuessScreen() {
     (n) => !usedByMe.has(n) || n === pickerCurrentGuess
   );
 
+  const isLoading = players === undefined || buildPhotos === undefined || guesses === undefined;
+  if (isLoading) {
+    return (
+      <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", background: "var(--bg0)", color: "white" }}>
+        <BrandBar badge={isFac ? "FACILITATOR" : undefined} />
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: "var(--textd)" }}>
+          Loading builds{"\u2026"}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", background: "var(--bg0)", color: "white" }}>
-      <BrandBar />
+      <BrandBar badge={isFac ? "FACILITATOR" : undefined} />
 
       {/* Picker modal */}
       {pickerPhotoId && pickerPhoto && (

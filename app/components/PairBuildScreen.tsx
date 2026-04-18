@@ -39,7 +39,7 @@ const CAT_COLORS: Record<string, string> = { shape: "#4FC3F7", feel: "#FF7043", 
 //  MAIN COMPONENT
 // ══════════════════════════════
 export default function PairBuildScreen() {
-  const { sessionId, sessionCode, playerId, name } = useGame();
+  const { sessionId, sessionCode, playerId, name, role } = useGame();
   const session = useQuery(api.game.getSession, sessionCode ? { code: sessionCode } : "skip");
   const players = useQuery(api.game.getPlayers, sessionId ? { sessionId } : "skip");
   const sentClues = useQuery(api.pairBuild.getSentClues, sessionId ? { sessionId } : "skip");
@@ -67,7 +67,6 @@ export default function PairBuildScreen() {
   const [selectedClue, setSelectedClue] = useState<string | null>(null);
   const [expandedClue, setExpandedClue] = useState<string | null>(null);
   const [chatInput, setChatInput] = useState("");
-  const [chatOpen, setChatOpen] = useState(false);
 
   // Camera state
   const [cameraActive, setCameraActive] = useState(false);
@@ -82,7 +81,10 @@ export default function PairBuildScreen() {
   const scenario = session?.scenario || "";
   const scenarioData = SCENARIOS.find((s) => s.id === scenario) || SCENARIOS[0];
   const currentRound = session?.buildSubPhase ?? 1;
+  const currentStage: "clue" | "build" = (session?.buildStage as "clue" | "build" | undefined) ?? "clue";
   const roundConfig = PAIR_BUILD_ROUNDS[currentRound - 1];
+  const isClueStage = currentStage === "clue";
+  const isBuildStage = currentStage === "build";
 
   // Clues I've sent as architect
   const mySentClues = (sentClues ?? []).filter((c) => me && c.architectId === me._id);
@@ -107,32 +109,49 @@ export default function PairBuildScreen() {
   }, [archMsgs?.length, buildMsgs?.length]);
 
   // ── Auto-advance when timer expires ──
-  // Guard ref prevents multiple calls from the same client for the same round.
-  // Server-side fromRound guard prevents races across clients.
-  const advancedForRoundRef = useRef<number | null>(null);
+  // Guard ref prevents multiple calls from the same client for the same (round, stage).
+  // Server-side fromRound+fromStage guard prevents races across clients.
+  const advancedForKeyRef = useRef<string | null>(null);
   useEffect(() => {
     const deadline = session?.subPhaseDeadline;
     if (!sessionId || !deadline || session?.phase !== "pair_build") return;
     const roundAtStart = currentRound;
-    if (advancedForRoundRef.current === roundAtStart) return;
+    const stageAtStart = currentStage;
+    const key = `${roundAtStart}:${stageAtStart}`;
+    if (advancedForKeyRef.current === key) return;
 
     const doAdvance = () => {
-      advancedForRoundRef.current = roundAtStart;
-      // Auto-submit any captured-but-unsent photo so the builder's work isn't lost
-      if (photo && playerId && !hasPhotoThisRound) {
+      advancedForKeyRef.current = key;
+      // During build stage: auto-submit any captured-but-unsent photo so the builder's work isn't lost
+      if (stageAtStart === "build" && photo && playerId && !hasPhotoThisRound) {
         uploadBuildPhoto({ sessionId, playerId, round: roundAtStart, photoDataUrl: photo }).catch(() => {});
         setPhoto(null);
         setLegoVerified(false);
       }
-      advanceSubPhase({ sessionId, fromRound: roundAtStart }).catch(() => {});
-      toast(roundAtStart < 3 ? `Time's up — moving to round ${roundAtStart + 1}` : "Time's up — moving to The Guess");
+      advanceSubPhase({ sessionId, fromRound: roundAtStart, fromStage: stageAtStart }).catch(() => {});
+      if (stageAtStart === "clue") {
+        toast(`Time's up — everyone start building!`);
+      } else {
+        toast(roundAtStart < 3 ? `Time's up — next round's clues coming` : "Time's up — moving to The Guess");
+      }
     };
 
     const msLeft = deadline - Date.now();
     if (msLeft <= 0) { doAdvance(); return; }
     const t = setTimeout(doAdvance, msLeft);
     return () => clearTimeout(t);
-  }, [session?.subPhaseDeadline, session?.phase, currentRound, sessionId, advanceSubPhase, photo, playerId, hasPhotoThisRound, uploadBuildPhoto]);
+  }, [session?.subPhaseDeadline, session?.phase, currentRound, currentStage, sessionId, advanceSubPhase, photo, playerId, hasPhotoThisRound, uploadBuildPhoto]);
+
+  // ── Auto-switch tab based on stage ──
+  // clue stage → architect tab; build stage → builder tab
+  const lastStageRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!session || session.phase !== "pair_build") return;
+    const stageKey = `${currentRound}:${currentStage}`;
+    if (lastStageRef.current === stageKey) return;
+    lastStageRef.current = stageKey;
+    setTab(isClueStage ? "architect" : "builder");
+  }, [currentRound, currentStage, session, isClueStage]);
 
   // ── Camera ──
   async function startCam() {
@@ -193,6 +212,146 @@ export default function PairBuildScreen() {
 
   // Expanded clue data
   const expandedClueData = expandedClue ? CLUE_CARDS.find((c) => c.id === expandedClue) : null;
+
+  // ── Facilitator dashboard view (replaces player UI) ──
+  if (role === "facilitator") {
+    const nonFacPlayers = (players ?? []).filter((p) => !p.isFacilitator);
+    const architectsWithPairs = nonFacPlayers.filter((p) => p.architectFor);
+    const clueSentThisRound = (sentClues ?? []).filter((c) => c.round === currentRound);
+    const clueSentByArchitect = new Set(clueSentThisRound.map((c) => c.architectId));
+    const photosThisRound = (buildPhotos ?? []).filter((p) => p.round === currentRound);
+    const photoByPlayer = new Set(photosThisRound.map((p) => p.playerId));
+
+    async function handleSkipStage() {
+      if (!sessionId) return;
+      await advanceSubPhase({ sessionId, fromRound: currentRound, fromStage: currentStage });
+      toast(isClueStage ? "Skipped to build stage" : `Skipped to round ${currentRound + 1}`);
+    }
+
+    return (
+      <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", background: "var(--bg0)", color: "white" }}>
+        <BrandBar badge="FACILITATOR" />
+
+        {/* Header */}
+        <div style={{
+          textAlign: "center", padding: "12px 16px", borderBottom: "1px solid var(--border)",
+          background: isClueStage ? "rgba(255,215,0,.05)" : "rgba(79,195,247,.05)",
+        }}>
+          <div style={{
+            fontFamily: "'Black Han Sans', sans-serif", fontSize: 10,
+            letterSpacing: 2, color: "var(--textd)", textTransform: "uppercase", marginBottom: 4,
+          }}>
+            Facilitator Dashboard {"\u00B7"} {roundConfig?.label} {"\u00B7"} Round {currentRound} of 3
+          </div>
+          <div style={{
+            fontFamily: "'Black Han Sans', sans-serif", fontSize: 14,
+            letterSpacing: 2, color: isClueStage ? "var(--acc1)" : "var(--acc2)",
+            textTransform: "uppercase", marginBottom: 6,
+          }}>
+            {isClueStage ? "\u{1F3A8} CLUE STAGE" : "\u{1F9F1} BUILD STAGE"}
+          </div>
+          <Timer deadline={session?.subPhaseDeadline} />
+        </div>
+
+        {/* Pair grid */}
+        <div style={{ flex: 1, overflowY: "auto", padding: 14 }}>
+          <div style={{
+            fontFamily: "'Black Han Sans', sans-serif", fontSize: 10,
+            letterSpacing: 2, color: "var(--textd)", textTransform: "uppercase", marginBottom: 10,
+          }}>
+            Pair progress ({architectsWithPairs.length} pairs)
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10 }}>
+            {architectsWithPairs.map((arch) => {
+              const builder = nonFacPlayers.find((p) => p._id === arch.architectFor);
+              if (!builder) return null;
+              const clueDone = clueSentByArchitect.has(arch._id);
+              const buildDone = photoByPlayer.has(builder._id);
+              return (
+                <div
+                  key={arch._id}
+                  style={{
+                    background: "rgba(255,255,255,.04)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--brick-radius)",
+                    padding: 12,
+                  }}
+                >
+                  <div style={{ fontSize: 11, color: "var(--textd)", marginBottom: 4 }}>
+                    <span style={{ color: "var(--acc1)", fontWeight: 800 }}>{arch.name}</span>
+                    {" \u2192 "}
+                    <span style={{ color: "var(--acc2)", fontWeight: 800 }}>{builder.name}</span>
+                  </div>
+                  <div style={{ fontSize: 10, color: "var(--textdd)", marginBottom: 8 }}>
+                    architecting {builder.districtName || "(unnamed)"}
+                  </div>
+                  <div style={{ display: "flex", gap: 8, fontSize: 10, fontWeight: 900, letterSpacing: 1 }}>
+                    <span style={{
+                      padding: "3px 8px", borderRadius: 4,
+                      background: clueDone ? "rgba(105,240,174,.18)" : "rgba(255,255,255,.04)",
+                      border: `1px solid ${clueDone ? "rgba(105,240,174,.35)" : "var(--border)"}`,
+                      color: clueDone ? "var(--acc4)" : "var(--textdd)",
+                    }}>
+                      {clueDone ? "\u2713 CLUE" : "\u25CB CLUE"}
+                    </span>
+                    <span style={{
+                      padding: "3px 8px", borderRadius: 4,
+                      background: buildDone ? "rgba(79,195,247,.18)" : "rgba(255,255,255,.04)",
+                      border: `1px solid ${buildDone ? "rgba(79,195,247,.35)" : "var(--border)"}`,
+                      color: buildDone ? "var(--acc2)" : "var(--textdd)",
+                    }}>
+                      {buildDone ? "\u2713 PHOTO" : "\u25CB PHOTO"}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Footer controls */}
+        <div style={{
+          padding: "10px 14px",
+          borderTop: "1px solid var(--border)",
+          background: "rgba(255,255,255,.02)",
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap",
+        }}>
+          <div style={{ fontSize: 12, color: "var(--textd)" }}>
+            {isClueStage
+              ? `${clueSentByArchitect.size}/${architectsWithPairs.length} clues sent`
+              : `${photoByPlayer.size}/${architectsWithPairs.length} photos uploaded`}
+          </div>
+          <button
+            className="lb lb-yellow"
+            style={{ fontSize: 11, padding: "8px 14px" }}
+            onClick={handleSkipStage}
+          >
+            {isClueStage
+              ? "SKIP TO BUILD \u2192"
+              : currentRound < 3 ? `SKIP TO ROUND ${currentRound + 1} \u2192` : "FINISH \u2192 GUESS"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Player with no pairing (shouldn't happen in normal flow, but guards against stale state)
+  if (me && !architectFor && !builderFor) {
+    return (
+      <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", background: "var(--bg0)", color: "white" }}>
+        <BrandBar />
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24, textAlign: "center", gap: 10 }}>
+          <div style={{ fontSize: 36 }}>{"\u{1F517}"}</div>
+          <div style={{ fontFamily: "'Black Han Sans', sans-serif", fontSize: 16, letterSpacing: 1.5, color: "var(--acc1)" }}>
+            Waiting for pair assignment
+          </div>
+          <div style={{ fontSize: 12, color: "var(--textd)", maxWidth: 320 }}>
+            Your facilitator needs to generate pairings. Sit tight &mdash; you&apos;ll enter the pair build as soon as that&apos;s done.
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", background: "var(--bg0)", color: "white" }}>
@@ -260,10 +419,10 @@ export default function PairBuildScreen() {
         </div>
       )}
 
-      {/* ── Round + Timer header ── */}
+      {/* ── Round + Stage + Timer header ── */}
       <div style={{
         textAlign: "center", padding: "12px 16px", borderBottom: "1px solid var(--border)",
-        background: "rgba(255,255,255,.02)",
+        background: isClueStage ? "rgba(255,215,0,.05)" : "rgba(79,195,247,.05)",
       }}>
         <div style={{
           fontFamily: "'Black Han Sans', sans-serif", fontSize: 10,
@@ -271,34 +430,47 @@ export default function PairBuildScreen() {
         }}>
           {roundConfig?.label ?? "Pair Build"} {"\u00B7"} Round {currentRound} of 3
         </div>
+        <div style={{
+          fontFamily: "'Black Han Sans', sans-serif", fontSize: 14,
+          letterSpacing: 2, color: isClueStage ? "var(--acc1)" : "var(--acc2)",
+          textTransform: "uppercase", marginBottom: 6,
+        }}>
+          {isClueStage ? "\u{1F3A8} CLUE STAGE \u2014 Architects pick a clue" : "\u{1F9F1} BUILD STAGE \u2014 Builders build!"}
+        </div>
         <Timer deadline={session?.subPhaseDeadline} />
       </div>
 
-      {/* ── Tab toggle ── */}
+      {/* ── Tab toggle (only the active stage's tab is enabled) ── */}
       <div style={{ display: "flex", borderBottom: "1px solid var(--border)" }}>
         <button
           onClick={() => setTab("architect")}
+          disabled={isBuildStage}
           style={{
-            flex: 1, padding: "12px 0", border: "none", background: "none", cursor: "pointer",
+            flex: 1, padding: "12px 0", border: "none", background: "none",
+            cursor: isBuildStage ? "not-allowed" : "pointer",
             fontFamily: "'Black Han Sans', sans-serif", fontSize: 11, letterSpacing: 2, textTransform: "uppercase",
             color: tab === "architect" ? "var(--acc1)" : "var(--textd)",
             borderBottom: tab === "architect" ? "2px solid var(--acc1)" : "2px solid transparent",
+            opacity: isBuildStage ? 0.4 : 1,
             transition: "all .15s",
           }}
         >
-          {"\u{1F3A8}"} GIVE CLUES
+          {"\u{1F3A8}"} GIVE CLUES {isClueStage && "\u25CF"}
         </button>
         <button
           onClick={() => setTab("builder")}
+          disabled={isClueStage}
           style={{
-            flex: 1, padding: "12px 0", border: "none", background: "none", cursor: "pointer",
+            flex: 1, padding: "12px 0", border: "none", background: "none",
+            cursor: isClueStage ? "not-allowed" : "pointer",
             fontFamily: "'Black Han Sans', sans-serif", fontSize: 11, letterSpacing: 2, textTransform: "uppercase",
             color: tab === "builder" ? "var(--acc2)" : "var(--textd)",
             borderBottom: tab === "builder" ? "2px solid var(--acc2)" : "2px solid transparent",
+            opacity: isClueStage ? 0.4 : 1,
             transition: "all .15s",
           }}
         >
-          {"\u{1F9F1}"} BUILD
+          {"\u{1F9F1}"} BUILD {isBuildStage && "\u25CF"}
         </button>
       </div>
 
@@ -327,18 +499,39 @@ export default function PairBuildScreen() {
             )}
 
             {/* Status */}
-            {sentThisRound && (
+            {sentThisRound && isClueStage && (
               <div style={{
                 background: "rgba(105,240,174,.08)", border: "1px solid rgba(105,240,174,.2)",
-                borderRadius: "var(--brick-radius)", padding: "10px 14px", marginBottom: 16,
-                textAlign: "center", fontSize: 12, color: "var(--acc4)", fontWeight: 800,
+                borderRadius: "var(--brick-radius)", padding: "14px", marginBottom: 16,
+                textAlign: "center",
               }}>
-                Clue sent for round {currentRound}. Waiting for next round.
+                <div style={{ fontSize: 22, marginBottom: 4 }}>{"\u2713"}</div>
+                <div style={{ fontSize: 13, color: "var(--acc4)", fontWeight: 800, marginBottom: 4 }}>
+                  Clue sent!
+                </div>
+                <div style={{ fontSize: 11, color: "var(--textd)" }}>
+                  Waiting for other architects to send their clues. Build stage starts when everyone&apos;s ready or the timer runs out.
+                </div>
+              </div>
+            )}
+            {isBuildStage && (
+              <div style={{
+                background: "rgba(79,195,247,.08)", border: "1px solid rgba(79,195,247,.2)",
+                borderRadius: "var(--brick-radius)", padding: "14px", marginBottom: 16,
+                textAlign: "center",
+              }}>
+                <div style={{ fontSize: 22, marginBottom: 4 }}>{"\u{1F9F1}"}</div>
+                <div style={{ fontSize: 13, color: "var(--acc2)", fontWeight: 800, marginBottom: 4 }}>
+                  Builders are building.
+                </div>
+                <div style={{ fontSize: 11, color: "var(--textd)" }}>
+                  Switch to the BUILD tab to work on your own build. You&apos;ll see your builder&apos;s photo below when it arrives.
+                </div>
               </div>
             )}
 
             {/* Selected clue confirmation */}
-            {selectedClue && !sentThisRound && (() => {
+            {selectedClue && !sentThisRound && isClueStage && (() => {
               const card = CLUE_CARDS.find((c) => c.id === selectedClue);
               if (!card) return null;
               return (
@@ -365,8 +558,8 @@ export default function PairBuildScreen() {
               );
             })()}
 
-            {/* Clue card grid */}
-            {!sentThisRound && (
+            {/* Clue card grid — only during clue stage, only if not yet sent */}
+            {!sentThisRound && isClueStage && (
               <div>
                 <div style={{
                   fontFamily: "'Black Han Sans', sans-serif", fontSize: 10,
@@ -485,6 +678,23 @@ export default function PairBuildScreen() {
         {/* ═══ BUILDER TAB ═══ */}
         {tab === "builder" && (
           <div style={{ padding: 16 }}>
+            {/* Clue-stage lock notice */}
+            {isClueStage && (
+              <div style={{
+                background: "rgba(255,215,0,.06)", border: "1px solid rgba(255,215,0,.25)",
+                borderRadius: "var(--brick-radius)", padding: "18px 16px", marginBottom: 16,
+                textAlign: "center",
+              }}>
+                <div style={{ fontSize: 28, marginBottom: 6 }}>{"\u23F3"}</div>
+                <div style={{ fontSize: 13, color: "var(--acc1)", fontWeight: 800, marginBottom: 4 }}>
+                  Hold on &mdash; architects are picking clues.
+                </div>
+                <div style={{ fontSize: 11, color: "var(--textd)", lineHeight: 1.6 }}>
+                  You can&apos;t build yet. Once every architect sends their clue (or the clue timer runs out), the build stage starts.
+                </div>
+              </div>
+            )}
+
             {/* Received clues */}
             <div style={{ marginBottom: 16 }}>
               <div style={{
@@ -544,8 +754,8 @@ export default function PairBuildScreen() {
               )}
             </div>
 
-            {/* Camera / Photo */}
-            <div style={{ marginBottom: 16 }}>
+            {/* Camera / Photo — only active during build stage */}
+            {isBuildStage && <div style={{ marginBottom: 16 }}>
               <div style={{
                 fontFamily: "'Black Han Sans', sans-serif", fontSize: 10,
                 letterSpacing: 2, color: "var(--textd)", textTransform: "uppercase", marginBottom: 10,
@@ -610,7 +820,7 @@ export default function PairBuildScreen() {
                   {"\u2713"} Photo uploaded for round {currentRound}
                 </div>
               )}
-            </div>
+            </div>}
 
             {/* My progress photos */}
             {myPhotos.length > 0 && (
@@ -644,64 +854,90 @@ export default function PairBuildScreen() {
         )}
       </div>
 
-      {/* ═══ PAIR CHAT (collapsible) ═══ */}
-      <div style={{ borderTop: "1px solid var(--border)", transition: "max-height .2s" }}>
-        <button
-          onClick={() => setChatOpen(!chatOpen)}
-          style={{
-            width: "100%", padding: "10px 16px", border: "none", background: "rgba(255,255,255,.02)",
-            display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer",
-            fontFamily: "'Black Han Sans', sans-serif", fontSize: 10, letterSpacing: 2,
-            color: "var(--textd)", textTransform: "uppercase",
-          }}
-        >
-          <span>{"\u{1F4AC}"} Pair Chat ({(activeMessages ?? []).length})</span>
-          <span>{chatOpen ? "\u25BC" : "\u25B2"}</span>
-        </button>
+      {/* ═══ PAIR CHAT (always visible) ═══ */}
+      {activePairKey && (
+        <div style={{
+          borderTop: "2px solid var(--border)",
+          background: "var(--bg1)",
+          display: "flex", flexDirection: "column",
+          maxHeight: 240, flexShrink: 0,
+        }}>
+          {/* Chat header — shows who you're chatting with (anonymous) */}
+          <div style={{
+            padding: "8px 14px",
+            borderBottom: "1px solid var(--border)",
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            background: "rgba(255,255,255,.03)",
+          }}>
+            <div style={{
+              fontFamily: "'Black Han Sans', sans-serif", fontSize: 10, letterSpacing: 2,
+              color: "var(--acc1)", textTransform: "uppercase",
+            }}>
+              {"\u{1F4AC}"} Chat with your {tab === "architect" ? "Builder" : "Architect"}
+            </div>
+            <div style={{ fontSize: 9, color: "var(--textdd)", fontWeight: 800, letterSpacing: 1 }}>
+              ANONYMOUS {"\u00B7"} {(activeMessages ?? []).length} MSG
+            </div>
+          </div>
 
-        {chatOpen && (
-          <>
-            <div ref={chatMsgsRef} className="chat-msgs" style={{ maxHeight: 160, padding: "8px 12px" }}>
-              {(activeMessages ?? []).length === 0 && (
-                <div style={{ textAlign: "center", color: "var(--textdd)", fontSize: 12, padding: "16px 0" }}>
-                  No messages yet. Chat is anonymous.
-                </div>
-              )}
-              {(activeMessages ?? []).map((msg) => {
-                const isMe = me && msg.senderId === me._id;
+          {/* Messages */}
+          <div
+            ref={chatMsgsRef}
+            className="chat-msgs"
+            style={{ flex: 1, maxHeight: 160, overflowY: "auto", padding: "8px 12px", display: "flex", flexDirection: "column", gap: 6 }}
+          >
+            {(activeMessages ?? []).length === 0 && (
+              <div style={{ textAlign: "center", color: "var(--textdd)", fontSize: 12, padding: "20px 0" }}>
+                No messages yet. Say hi {"\u2014"} your partner is anonymous.
+              </div>
+            )}
+            {(activeMessages ?? [])
+              .slice()
+              .sort((a, b) => a._creationTime - b._creationTime)
+              .map((msg) => {
+                const isMe = !!(me && msg.senderId === me._id);
                 return (
-                  <div key={msg._id} style={{ display: "flex", justifyContent: isMe ? "flex-end" : "flex-start", marginBottom: 6 }}>
+                  <div key={msg._id} style={{ display: "flex", justifyContent: isMe ? "flex-end" : "flex-start" }}>
                     <div style={{
-                      maxWidth: "75%", borderRadius: 10, padding: "8px 12px",
-                      background: isMe ? "rgba(255,215,0,.12)" : "rgba(255,255,255,.06)",
-                      border: `1px solid ${isMe ? "rgba(255,215,0,.2)" : "var(--border)"}`,
+                      maxWidth: "78%", borderRadius: 10, padding: "7px 11px",
+                      background: isMe ? "rgba(255,215,0,.14)" : "rgba(255,255,255,.07)",
+                      border: `1px solid ${isMe ? "rgba(255,215,0,.3)" : "var(--border)"}`,
                     }}>
-                      <div style={{ fontSize: 9, fontWeight: 900, letterSpacing: 1, color: "var(--textd)", marginBottom: 2, textTransform: "uppercase" }}>
+                      <div style={{ fontSize: 9, fontWeight: 900, letterSpacing: 1, color: isMe ? "var(--acc1)" : "var(--textd)", marginBottom: 2, textTransform: "uppercase" }}>
                         {isMe ? myLabel : theirLabel}
                       </div>
-                      <div style={{ fontSize: 13, color: "white" }}>{msg.text}</div>
+                      <div style={{ fontSize: 13, color: "white", wordBreak: "break-word" }}>{msg.text}</div>
                     </div>
                   </div>
                 );
               })}
-            </div>
-            <div style={{ display: "flex", gap: 8, padding: "8px 12px 12px" }}>
-              <input
-                className="chat-input"
-                type="text"
-                placeholder="Message..."
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter" && activePairKey) handleSendChat(activePairKey); }}
-                style={{ flex: 1 }}
-              />
-              <button className="lb lb-ghost" style={{ fontSize: 10, padding: "8px 14px" }} onClick={() => activePairKey && handleSendChat(activePairKey)}>
-                SEND
-              </button>
-            </div>
-          </>
-        )}
-      </div>
+          </div>
+
+          {/* Input row */}
+          <form
+            onSubmit={(e) => { e.preventDefault(); handleSendChat(activePairKey); }}
+            style={{ display: "flex", gap: 8, padding: "8px 12px 12px", borderTop: "1px solid var(--border)" }}
+          >
+            <input
+              className="chat-input"
+              type="text"
+              placeholder={`Message your ${tab === "architect" ? "builder" : "architect"}\u2026`}
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              style={{ flex: 1 }}
+              autoComplete="off"
+            />
+            <button
+              type="submit"
+              className="lb lb-yellow"
+              style={{ fontSize: 10, padding: "8px 14px" }}
+              disabled={!chatInput.trim()}
+            >
+              SEND
+            </button>
+          </form>
+        </div>
+      )}
     </div>
   );
 }

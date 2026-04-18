@@ -157,7 +157,12 @@ function GameShell() {
   }, [session?.phase, role, goTo]);
 
   const Screen = SCREENS[screen] || EntryScreen;
-  return <Screen />;
+  // key=screen forces a remount on phase transition, triggering the fade-in animation on the root.
+  return (
+    <div key={screen} style={{ animation: "fadeIn .35s ease-out" }}>
+      <Screen />
+    </div>
+  );
 }
 
 export default function Home() {
