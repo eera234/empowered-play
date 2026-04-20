@@ -10,13 +10,16 @@ interface BrandBarProps {
 }
 
 export default function BrandBar({ badge, backTo, children }: BrandBarProps) {
-  const { sessionId, set, goTo } = useGame();
+  const { sessionId, goTo, leaveSession } = useGame();
 
-  function leaveSession() {
-    if (!confirm("Leave this session? You can rejoin with the same code and name.")) return;
-    set({ role: null, name: "", sessionCode: "", sessionId: null, playerId: null, scenario: "", screen: "s-entry" });
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("empowered-play-session");
+  // Clicking the logo should never silently navigate away from an active session —
+  // that creates ghost state where refresh puts you right back. If a session is
+  // active, trigger the leave flow; otherwise just go home.
+  function handleBrandClick() {
+    if (sessionId) {
+      leaveSession();
+    } else {
+      goTo("s-entry");
     }
   }
 
@@ -27,7 +30,7 @@ export default function BrandBar({ badge, backTo, children }: BrandBarProps) {
         <div className="lego-stud-3d" />
         <div className="lego-stud-3d" />
       </div>
-      <div className="b-name" onClick={() => goTo("s-entry")}>
+      <div className="b-name" onClick={handleBrandClick}>
         (Em)Powered Play
       </div>
       {badge && <div className="fac-badge">{badge}</div>}
@@ -39,8 +42,17 @@ export default function BrandBar({ badge, backTo, children }: BrandBarProps) {
           </button>
         )}
         {sessionId && (
-          <button className="back-btn" onClick={leaveSession} style={{ opacity: 0.6 }}>
-            leave
+          <button
+            className="back-btn"
+            onClick={() => leaveSession()}
+            style={{
+              background: "rgba(0,0,0,.45)",
+              fontWeight: 900,
+              letterSpacing: ".5px",
+            }}
+            title="Leave this session (you can rejoin with the same code)"
+          >
+            LEAVE
           </button>
         )}
       </div>

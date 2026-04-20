@@ -33,6 +33,7 @@ interface GameState {
 interface GameContextValue extends GameState {
   set: (updates: Partial<GameState>) => void;
   goTo: (screen: string) => void;
+  leaveSession: (opts?: { confirm?: boolean; reload?: boolean }) => void;
 }
 
 const STORAGE_KEY = "empowered-play-session";
@@ -90,6 +91,37 @@ function saveToStorage(state: GameState) {
 
 const GameContext = createContext<GameContextValue | null>(null);
 
+function clearStorage() {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+    // Defensive: wipe any stale session-related keys that may have been set by older builds
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith("empowered-play")) localStorage.removeItem(key);
+    }
+  } catch {
+    // storage unavailable (Safari private browsing, etc.)
+  }
+}
+
+// If the URL has ?reset=1, wipe storage and strip the query param before React hydrates state.
+// This is the escape hatch for "I'm stuck on Safari" — user just appends ?reset=1 to the URL.
+function consumeResetParam(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("reset") === "1") {
+      clearStorage();
+      url.searchParams.delete("reset");
+      window.history.replaceState({}, "", url.pathname + (url.search ? url.search : "") + url.hash);
+      return true;
+    }
+  } catch {
+    // noop
+  }
+  return false;
+}
+
 export function GameProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<GameState>({
     role: null,
@@ -104,22 +136,30 @@ export function GameProvider({ children }: { children: ReactNode }) {
     scenario: "",
   });
 
-  // Restore from localStorage AFTER hydration to avoid mismatch
+  // Restore from localStorage AFTER hydration to avoid mismatch.
+  // Honors ?reset=1 as a hard escape — clears storage and skips restore.
   const [restored, setRestored] = useState(false);
   useEffect(() => {
     if (restored) return;
-    const persisted = loadFromStorage();
-    if (persisted.playerId) {
-      setState((prev) => ({
-        ...prev,
-        role: persisted.role ?? null,
-        name: persisted.name ?? "",
-        sessionCode: persisted.sessionCode ?? "",
-        sessionId: persisted.sessionId ?? null,
-        playerId: persisted.playerId ?? null,
-        screen: "s-wait",
-        scenario: persisted.scenario ?? "",
-      }));
+    const wasReset = consumeResetParam();
+    if (!wasReset) {
+      const persisted = loadFromStorage();
+      if (persisted.playerId) {
+        // Facilitators land on their setup screen while waiting; players wait.
+        // The phase-based routing effect in page.tsx will override this as soon
+        // as the session query resolves (e.g. to s-map for mid-game rejoin).
+        const initialScreen = persisted.role === "facilitator" ? "s-fac-setup" : "s-wait";
+        setState((prev) => ({
+          ...prev,
+          role: persisted.role ?? null,
+          name: persisted.name ?? "",
+          sessionCode: persisted.sessionCode ?? "",
+          sessionId: persisted.sessionId ?? null,
+          playerId: persisted.playerId ?? null,
+          screen: initialScreen,
+          scenario: persisted.scenario ?? "",
+        }));
+      }
     }
     setRestored(true);
   }, [restored]);
@@ -135,11 +175,41 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const goTo = useCallback((screen: string) => {
     setState((prev) => ({ ...prev, screen }));
-    window.scrollTo(0, 0);
+    if (typeof window !== "undefined") window.scrollTo(0, 0);
+  }, []);
+
+  // Leave the current session — clears local state + localStorage.
+  // The server-side session is untouched; user can rejoin with the same code.
+  // reload=true forces a full page reload as a last resort against stuck UI state.
+  const leaveSession = useCallback((opts?: { confirm?: boolean; reload?: boolean }) => {
+    const needsConfirm = opts?.confirm !== false;
+    if (needsConfirm && typeof window !== "undefined") {
+      const ok = window.confirm(
+        "Leave this game?\n\nYou can rejoin with the same session code and name. This just resets this device."
+      );
+      if (!ok) return;
+    }
+    clearStorage();
+    setState({
+      role: null,
+      name: "",
+      sessionCode: "",
+      sessionId: null,
+      playerId: null,
+      screen: "s-entry",
+      myCard: null,
+      photo: null,
+      distName: "",
+      scenario: "",
+    });
+    if (opts?.reload && typeof window !== "undefined") {
+      // Hard reload — blows away any in-memory Convex subscriptions and component trees
+      window.location.href = window.location.pathname;
+    }
   }, []);
 
   return (
-    <GameContext.Provider value={{ ...state, set, goTo }}>
+    <GameContext.Provider value={{ ...state, set, goTo, leaveSession }}>
       {children}
     </GameContext.Provider>
   );

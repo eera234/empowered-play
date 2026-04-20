@@ -22,6 +22,7 @@ import PairBuildScreen from "./components/PairBuildScreen";
 import GuessScreen from "./components/GuessScreen";
 import StoryMapScreen from "./components/StoryMapScreen";
 import VoteScreen from "./components/VoteScreen";
+import StuckRecovery from "./components/StuckRecovery";
 
 // New phase → screen mapping (used for both player and facilitator routing)
 const NEW_PHASE_TO_SCREEN: Record<string, string> = {
@@ -57,7 +58,7 @@ const SCREENS: Record<string, ComponentType> = {
 };
 
 function GameShell() {
-  const { screen, sessionCode, sessionId, playerId, role, set, goTo } = useGame();
+  const { screen, sessionCode, sessionId, playerId, role, set, goTo, leaveSession } = useGame();
   const session = useQuery(
     api.game.getSession,
     sessionCode ? { code: sessionCode } : "skip"
@@ -68,23 +69,31 @@ function GameShell() {
   );
   const prevPhaseRef = useRef<string | null>(null);
 
+  // Silent-leave: clears local state + storage without prompting the user.
+  // Used for "session was deleted / I was kicked" paths where a confirm dialog
+  // would be confusing ("why is it asking me to leave a session I'm not in?").
+  function silentLeave() {
+    leaveSession({ confirm: false });
+  }
+
   // If restored playerId no longer exists (player was removed), clear and go to entry
   useEffect(() => {
     if (!playerId || !players) return;
     const stillExists = players.some((p) => p._id === playerId);
     if (!stillExists) {
-      clearSession();
+      silentLeave();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playerId, players]);
 
-  // If session code doesn't find a session (deleted/expired), clear saved data
-  // session is null when query returns no result, undefined when still loading
+  // If session code doesn't find a session (deleted/expired), clear saved data.
+  // session is null when query returns no result, undefined when still loading.
   useEffect(() => {
     if (!sessionCode) return;
     if (session === null) {
-      // Query returned, session not found
-      clearSession();
+      silentLeave();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, sessionCode]);
 
   // If session is complete, clear saved data so browser can join a new game
@@ -106,13 +115,6 @@ function GameShell() {
       set({ scenario: session.scenario });
     }
   }, [session?.scenario, set]);
-
-  function clearSession() {
-    set({ role: null, name: "", sessionCode: "", sessionId: null, playerId: null, scenario: "", screen: "s-entry" });
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("empowered-play-session");
-    }
-  }
 
   useEffect(() => {
     if (!session || session.phase === prevPhaseRef.current) return;
@@ -159,9 +161,12 @@ function GameShell() {
   const Screen = SCREENS[screen] || EntryScreen;
   // key=screen forces a remount on phase transition, triggering the fade-in animation on the root.
   return (
-    <div key={screen} style={{ animation: "fadeIn .35s ease-out" }}>
-      <Screen />
-    </div>
+    <>
+      <div key={screen} style={{ animation: "fadeIn .35s ease-out" }}>
+        <Screen />
+      </div>
+      <StuckRecovery />
+    </>
   );
 }
 
