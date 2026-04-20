@@ -3,13 +3,14 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { SCENARIOS, ABILITIES } from "../../lib/constants";
+import { SCENARIOS, ABILITIES, getThemedAbility } from "../../lib/constants";
 import { useGame } from "../GameContext";
 import BrandBar from "./BrandBar";
 import { SCENARIO_ILLUSTRATIONS } from "./EntryScreen";
+import { playSound } from "../../lib/sound";
 
 const ABILITY_COLORS: Record<string, string> = {
-  pathfinder: "#4FC3F7", scout: "#B388FF", engineer: "#FF7043", anchor: "#66BB6A", diplomat: "#FFD740",
+  mender: "#4FC3F7", scout: "#B388FF", engineer: "#FF7043", anchor: "#66BB6A", diplomat: "#FFD740",
 };
 
 export default function WaitScreen() {
@@ -17,6 +18,7 @@ export default function WaitScreen() {
   const players = useQuery(api.game.getPlayers, sessionId ? { sessionId } : "skip");
   const session = useQuery(api.game.getSession, sessionCode ? { code: sessionCode } : "skip");
   const voteScenario = useMutation(api.game.voteScenario);
+  const markRoleSeen = useMutation(api.game.markRoleSeen);
 
   const otherPlayers = (players || []).filter((p) => !p.isFacilitator && p.name !== name);
   const me = (players || []).find((p) => p._id === playerId);
@@ -154,13 +156,98 @@ export default function WaitScreen() {
 
   // Scenario confirmed
   const chosenScenario = SCENARIOS.find((s) => s.id === session?.scenario);
-  const myAbility = me?.ability ? ABILITIES.find((a) => a.id === me.ability) : null;
+  const myAbilityBase = me?.ability ? ABILITIES.find((a) => a.id === me.ability) : null;
+  const myAbility = myAbilityBase && chosenScenario ? getThemedAbility(myAbilityBase, chosenScenario) : myAbilityBase;
   const abilityColor = me?.ability ? ABILITY_COLORS[me.ability] : null;
   const hasRole = !!(me?.districtName || me?.ability);
+  const showRoleReveal = hasRole && !me?.roleSeenAt;
+
+  async function handleAcknowledgeRole() {
+    if (!playerId) return;
+    playSound("lego-detected");
+    await markRoleSeen({ playerId });
+  }
 
   return (
     <div className="screen active" id="s-wait">
       <BrandBar />
+
+      {/* Role reveal modal — full-screen card flip on first receipt of role */}
+      {showRoleReveal && chosenScenario && (
+        <div
+          style={{
+            position: "fixed", inset: 0, background: "rgba(6,6,26,.96)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            padding: 24, zIndex: 800,
+            animation: "fadeIn .35s ease-out",
+          }}
+        >
+          <div
+            style={{
+              maxWidth: 380, width: "100%",
+              background: `linear-gradient(155deg, ${chosenScenario.color}24, rgba(10,10,20,.95) 60%)`,
+              border: `2px solid ${chosenScenario.color}80`,
+              borderRadius: 16, padding: "28px 24px",
+              boxShadow: `0 20px 60px ${chosenScenario.color}33`,
+              textAlign: "center",
+              animation: "fadeIn .6s cubic-bezier(.2,.9,.3,1.2)",
+            }}
+          >
+            <div style={{
+              fontFamily: "'Black Han Sans', sans-serif", fontSize: 11,
+              letterSpacing: 3, color: "var(--textd)", marginBottom: 6,
+            }}>
+              YOUR ROLE
+            </div>
+            {me?.districtName && (
+              <>
+                <div style={{ fontSize: 10, color: "var(--textdd)", letterSpacing: 1, textTransform: "uppercase", fontWeight: 800 }}>
+                  {chosenScenario.terminology.district}
+                </div>
+                <div style={{
+                  fontFamily: "'Black Han Sans', sans-serif", fontSize: 26,
+                  color: chosenScenario.color, letterSpacing: 2, marginBottom: 16,
+                }}>
+                  {me.districtName.toUpperCase()}
+                </div>
+              </>
+            )}
+            {myAbility ? (
+              <div style={{
+                background: `${abilityColor}18`, border: `1px solid ${abilityColor}55`,
+                borderRadius: 10, padding: "14px 16px", marginBottom: 20,
+              }}>
+                <div style={{ fontSize: 32, marginBottom: 8 }}>{myAbility.icon}</div>
+                <div style={{
+                  fontFamily: "'Black Han Sans', sans-serif", fontSize: 16,
+                  color: abilityColor || "white", letterSpacing: 2, marginBottom: 8,
+                }}>
+                  {myAbility.label.toUpperCase()}
+                </div>
+                <div style={{ fontSize: 12, color: "white", lineHeight: 1.5 }}>
+                  {myAbility.description}
+                </div>
+              </div>
+            ) : (
+              <div style={{
+                background: "rgba(255,255,255,.04)", border: "1px solid var(--border)",
+                borderRadius: 10, padding: "14px 16px", marginBottom: 20,
+                fontSize: 12, color: "var(--textd)", fontStyle: "italic",
+              }}>
+                You are a Citizen. No special ability &mdash; but the team needs you on the map.
+              </div>
+            )}
+            <button
+              className="lb lb-yellow"
+              onClick={handleAcknowledgeRole}
+              style={{ padding: "12px 36px", fontSize: 13, width: "100%" }}
+            >
+              TAP TO CONTINUE {"\u2192"}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="wait-wrap">
         <div className="wait-code-box">
           <div className="wc-lbl">YOU ARE IN</div>

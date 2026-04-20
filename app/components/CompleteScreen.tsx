@@ -1,6 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "convex/react";
+import { api } from "../../convex/_generated/api";
+import { COMPLETE_COPY, VOTE_CATEGORIES, REFLECTION_PROMPTS } from "../../lib/constants";
+import { playSound } from "../../lib/sound";
 import { useGame } from "../GameContext";
 import BrandBar from "./BrandBar";
 
@@ -44,7 +48,55 @@ function ConfettiAnimation() {
 }
 
 export default function CompleteScreen() {
-  const { goTo } = useGame();
+  const { goTo, scenario, sessionCode, sessionId } = useGame();
+  const session = useQuery(api.game.getSession, sessionCode ? { code: sessionCode } : "skip");
+  const scenarioId = scenario || session?.scenario || "rising_tides";
+  const copy = COMPLETE_COPY[scenarioId] ?? COMPLETE_COPY.rising_tides;
+
+  // Queries for the Debrief Summary — votes + reflection answers tied to this
+  // session. These feed the bar charts and the quoted answer cards below.
+  const players = useQuery(api.game.getPlayers, sessionId ? { sessionId } : "skip");
+  const votes = useQuery(api.voting.getVotes, sessionId ? { sessionId } : "skip");
+  const debriefAnswers = useQuery(api.game.getDebriefAnswers, sessionId ? { sessionId } : "skip");
+
+  const nonFac = (players ?? []).filter((p) => !p.isFacilitator);
+  const playerName = (id?: string) => nonFac.find((p) => p._id === id)?.name ?? "";
+
+  // Vote tallies per category. Each row: candidate name + count + % of total.
+  const voteTallies = useMemo(() => {
+    const out: Record<string, { playerId: string; name: string; count: number }[]> = {};
+    for (const cat of VOTE_CATEGORIES) {
+      const counts = new Map<string, number>();
+      (votes ?? []).filter((v) => v.category === cat.id).forEach((v) => {
+        counts.set(v.targetPlayerId, (counts.get(v.targetPlayerId) ?? 0) + 1);
+      });
+      out[cat.id] = Array.from(counts.entries())
+        .map(([pid, count]) => ({ playerId: pid, name: playerName(pid), count }))
+        .sort((a, b) => b.count - a.count);
+    }
+    return out;
+  }, [votes, players]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reflection answers keyed by the base prompt (strip the "[reflection] " tag).
+  const reflectionByPrompt = useMemo(() => {
+    const map = new Map<string, { name: string; answer: string }[]>();
+    for (const prompt of REFLECTION_PROMPTS) map.set(prompt, []);
+    for (const a of (debriefAnswers ?? [])) {
+      if (!a.question.startsWith("[reflection] ")) continue;
+      const base = a.question.slice("[reflection] ".length);
+      const arr = map.get(base);
+      if (!arr) continue;
+      arr.push({ name: playerName(a.playerId) || "Someone", answer: a.answer });
+    }
+    return map;
+  }, [debriefAnswers, players]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fire the fanfare exactly once on first mount. Auto-played audio is
+  // gated by the global first-gesture unlock in app/page.tsx, so if the
+  // user navigated here via a button tap, the context is already resumed.
+  useEffect(() => {
+    playSound("complete-fanfare");
+  }, []);
 
   return (
     <div className="screen active" id="s-complete">
@@ -121,12 +173,76 @@ export default function CompleteScreen() {
             <circle cx="78" cy="100" r="3.5" fill="#D4941A" stroke="#C8A200" strokeWidth=".8" />
           </svg>
         </div>
-        <div className="comp-title">THE CITY STANDS</div>
-        <div className="comp-sub">
-          Every district connected. Every constraint met. Your team built something no single
-          person could have built alone.
+        <div className="comp-title">{copy.title}</div>
+        <div className="comp-sub">{copy.subtitle}</div>
+
+        {/* ── Debrief Summary ── */}
+        <div className="comp-summary">
+          {/* The Votes — neutral gold bars per category */}
+          <div className="comp-summary-section">
+            <div className="comp-summary-heading">THE VOTES</div>
+            {VOTE_CATEGORIES.map((cat) => {
+              const rows = voteTallies[cat.id] ?? [];
+              const total = rows.reduce((a, r) => a + r.count, 0);
+              return (
+                <div key={cat.id} className="comp-vote-block">
+                  <div className="comp-vote-header">
+                    <span className="comp-vote-icon">{cat.icon}</span>
+                    <div>
+                      <div className="comp-vote-title">{cat.label.toUpperCase()}</div>
+                      <div className="comp-vote-q">{cat.question}</div>
+                    </div>
+                  </div>
+                  {total === 0 ? (
+                    <div className="comp-vote-empty">No votes cast.</div>
+                  ) : (
+                    <div className="comp-vote-rows">
+                      {rows.map((r) => {
+                        const pct = Math.round((r.count / total) * 100);
+                        return (
+                          <div key={r.playerId} className="comp-vote-row">
+                            <div className="comp-vote-name">{r.name}</div>
+                            <div className="comp-vote-bar-wrap">
+                              <div className="comp-vote-bar" style={{ width: `${pct}%` }} />
+                            </div>
+                            <div className="comp-vote-count">{r.count}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* What You Noticed — reflection answers grouped by prompt */}
+          <div className="comp-summary-section">
+            <div className="comp-summary-heading">WHAT YOU NOTICED</div>
+            {REFLECTION_PROMPTS.map((prompt, idx) => {
+              const answers = reflectionByPrompt.get(prompt) ?? [];
+              return (
+                <div key={idx} className="comp-answer-group">
+                  <div className="comp-answer-prompt">{prompt}</div>
+                  {answers.length === 0 ? (
+                    <div className="comp-answer-empty">No answers yet.</div>
+                  ) : (
+                    <div className="comp-answer-list">
+                      {answers.map((a, i) => (
+                        <div key={i} className="comp-answer-card">
+                          <div className="comp-answer-name">{a.name}</div>
+                          <div className="comp-answer-body">&ldquo;{a.answer}&rdquo;</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", marginTop: 24 }}>
           <button className="lb lb-yellow" onClick={() => goTo("s-entry")}>
             PLAY AGAIN
           </button>

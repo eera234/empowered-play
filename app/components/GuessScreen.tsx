@@ -239,15 +239,58 @@ export default function GuessScreen() {
           {revealMode
             ? (isFac
                 ? `See how the team did, then advance to the Story Map.`
-                : `You got ${myScore} of ${targetsToGuess.length} correct!`)
+                : targetsToGuess.length > 0
+                  ? `You got ${myScore} of ${targetsToGuess.length} correct!`
+                  : `No guesses to reveal — only your pair played this round.`)
             : (isFac
                 ? `Players are matching ${scenarioData.terminology.district} names to anonymous photos.`
-                : amDone
-                  ? `All guesses submitted. Waiting for others...`
-                  : `Tap a photo to assign a ${scenarioData.terminology.district} name.`)
+                : targetsToGuess.length === 0
+                  ? `Only your pair in this session — no one else to guess.`
+                  : amDone
+                    ? `All guesses submitted. Waiting for others...`
+                    : `Tap a photo to assign a ${scenarioData.terminology.district} name.`)
           }
         </div>
       </div>
+
+      {/* 2-player empty state: nothing to guess, tell the player and wait for facilitator */}
+      {!isFac && !revealMode && targetsToGuess.length === 0 && (
+        <div style={{
+          margin: 16, padding: "24px 18px",
+          background: "rgba(255,215,0,.06)", border: "1px solid rgba(255,215,0,.25)",
+          borderRadius: "var(--brick-radius)", textAlign: "center",
+        }}>
+          <div style={{ fontSize: 28, marginBottom: 8 }}>{"\u{1F44B}"}</div>
+          <div style={{ fontFamily: "'Black Han Sans', sans-serif", fontSize: 14, letterSpacing: 1, marginBottom: 6 }}>
+            NOTHING TO GUESS
+          </div>
+          <div style={{ fontSize: 12, color: "var(--textd)", lineHeight: 1.5 }}>
+            With two players, you&apos;ve already coached each other&apos;s builds.
+            Waiting for the facilitator to move on to the Story Map.
+          </div>
+        </div>
+      )}
+
+      {/* Facilitator skip button when the session has too few players for a real round */}
+      {isFac && !revealMode && nonFac.length < 3 && (
+        <div style={{
+          margin: 16, padding: "16px 18px",
+          background: "rgba(79,195,247,.06)", border: "1px solid rgba(79,195,247,.3)",
+          borderRadius: "var(--brick-radius)",
+        }}>
+          <div style={{ fontSize: 12, color: "var(--textd)", marginBottom: 10 }}>
+            Only {nonFac.length} player{nonFac.length === 1 ? "" : "s"} — not enough for cross-guessing.
+            You can skip straight to the Story Map.
+          </div>
+          <button
+            className="lb lb-yellow"
+            style={{ width: "100%", fontSize: 13 }}
+            onClick={handleAdvance}
+          >
+            SKIP GUESSING {"\u2192"}
+          </button>
+        </div>
+      )}
 
       {/* Content */}
       <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>

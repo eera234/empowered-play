@@ -123,7 +123,10 @@ export const sendPairMessage = mutation({
     text: v.string(),
   },
   handler: async (ctx, args) => {
-    await ctx.db.insert("pair_messages", args);
+    const trimmed = args.text.trim();
+    if (!trimmed) throw new Error("Empty message");
+    if (trimmed.length > 500) throw new Error("Message too long");
+    await ctx.db.insert("pair_messages", { ...args, text: trimmed });
   },
 });
 

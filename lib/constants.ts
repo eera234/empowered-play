@@ -9,6 +9,12 @@ export interface CardOverride {
   mapClue: string;
 }
 
+export interface AbilityOverride {
+  label?: string;       // in-world name for the ability
+  icon?: string;        // optional themed icon (emoji)
+  description?: string; // in-world description shown to the player
+}
+
 export interface Scenario {
   id: string;
   title: string;
@@ -19,6 +25,7 @@ export interface Scenario {
   mapTheme: "water" | "space" | "ocean" | "forest";
   districtNames: Record<number, string>; // cardId → scenario-specific name
   cardOverrides?: Record<number, CardOverride>; // cardId → themed card text
+  abilityOverrides?: Record<string, AbilityOverride>; // ABILITIES.id → themed label/icon/desc
   terminology: {
     district: string;   // what a player's build is called
     zone: string;       // what a map area is called
@@ -29,14 +36,14 @@ export interface Scenario {
 export const SCENARIOS: Scenario[] = [
   {
     id: "rising_tides",
-    title: "Cityscape",
-    tagline: "Rebuild the city from the ruins",
+    title: "Harborside",
+    tagline: "Rebuild the village after the storm",
     icon: "\u{1F3D9}\uFE0F",
     color: "#4FC3F7",
     briefing:
-      "The old city is gone. Swallowed by rising waters. Your team are the architects of what comes next. Each of you builds one district of the new city. But you each carry a sealed constraint that shapes how you build. Nobody knows anyone else's rule.",
+      "The harbor is half-drowned. The seawall is breached. Your team are the architects of what comes next. Each of you shapes one district of the new village. But you each carry a sealed constraint that shapes how you build. Nobody knows anyone else's rule.",
     mapTheme: "water",
-    terminology: { district: "district", zone: "zone", map: "city map" },
+    terminology: { district: "district", zone: "zone", map: "harbor" },
     districtNames: {
       0: "The Lighthouse",
       1: "The Lowlands",
@@ -46,6 +53,13 @@ export const SCENARIOS: Scenario[] = [
       5: "The Market Dock",
       6: "The Safe Room",
       7: "The Harbor Gate",
+    },
+    abilityOverrides: {
+      mender:     { label: "Seawall Mender",icon: "\u{1F9F0}", description: "When the storm breaks a dock, you can rebuild one plank across it in Chapter 3." },
+      scout:      { label: "Lookout",       icon: "\u{1F52D}", description: "From the lighthouse tower you spot the storm before anyone else." },
+      engineer:   { label: "Dockmaster",    icon: "\u{1F528}", description: "You can plank across broken piers. Others can't bridge open water." },
+      anchor:     { label: "Keeper",        icon: "\u{1F3EE}", description: "Your district is the lantern in the fog. Anything near you is safe." },
+      diplomat:   { label: "Envoy",         icon: "\u{1F4E6}", description: "Once per chapter you can slip a private message to any harbourhand." },
     },
   },
   {
@@ -78,6 +92,13 @@ export const SCENARIOS: Scenario[] = [
       6: { title: "The Capsule", icon: "capsule", shapeHint: "Build DENSE. Smallest footprint possible. Every component packed tight.", mapClue: "The station must take shape before you slot in. Patience, then precision." },
       7: { title: "The Hatch", icon: "hatch", shapeHint: "Build a GATEWAY. Your module must have a clear opening. It is the way in and out.", mapClue: "Nothing enters without passing through you. Find where the station opens to space." },
     },
+    abilityOverrides: {
+      mender:     { label: "Hull Mender",      icon: "\u{1F9F0}", description: "When the crisis breaches a corridor, you can patch one gap in Chapter 3." },
+      scout:      { label: "Radar Op",         icon: "\u{1F4E1}", description: "You read the scanner one cycle ahead. Warn the crew before it lands." },
+      engineer:   { label: "Engineer",         icon: "\u{1F527}", description: "You can route corridors through vacuum. Others need pressurised lanes." },
+      anchor:     { label: "Chief of Ops",     icon: "\u{1F6E1}\uFE0F", description: "Your module is the operations core. Anything linked to it stays online." },
+      diplomat:   { label: "Comms Officer",    icon: "\u{1F4E8}", description: "Once per chapter you can open an encrypted 60-second channel with any crew member." },
+    },
   },
   {
     id: "deep_current",
@@ -109,6 +130,13 @@ export const SCENARIOS: Scenario[] = [
       6: { title: "The Pod", icon: "pod", shapeHint: "Build DENSE. Smallest footprint. Pack everything tight against the pressure.", mapClue: "The settlement must take shape before you descend to your place in it." },
       7: { title: "The Airlock", icon: "airlock", shapeHint: "Build a GATEWAY. Your sector must have a clear opening. The way in from the open ocean.", mapClue: "Nothing enters without passing through you. Find where the settlement meets the deep." },
     },
+    abilityOverrides: {
+      mender:     { label: "Reef Mender",      icon: "\u{1F9F0}", description: "When the current tears a tunnel, you can knit one back together in Chapter 3." },
+      scout:      { label: "Sonar",            icon: "\u{1F3B5}", description: "You hear the tremor one pulse before the others feel it." },
+      engineer:   { label: "Hydro-Engineer",   icon: "\u{1F527}", description: "You can lay pressure-proof tunnels across the open deep. Others can't cross the trenches." },
+      anchor:     { label: "Deep Keeper",      icon: "\u{1F41A}", description: "Your sector is the biolume core. Anything near you keeps its glow in the dark." },
+      diplomat:   { label: "Signaler",         icon: "\u{1F41F}", description: "Once per chapter you can send a bioluminescent pulse to one other sector in private." },
+    },
   },
   {
     id: "roothold",
@@ -122,13 +150,20 @@ export const SCENARIOS: Scenario[] = [
     terminology: { district: "outpost", zone: "clearing", map: "canopy" },
     districtNames: {
       0: "The Canopy",
-      1: "The Undergrowth",
+      1: "Undergrowth Hollow",
       2: "The Hollow",
       3: "The Vine Bridge",
       4: "The Ancient Tree",
       5: "The Clearing",
       6: "The Seed Bank",
       7: "The Root Arch",
+    },
+    abilityOverrides: {
+      mender:     { label: "Root Mender",      icon: "\u{1F9F0}", description: "When a vine bridge snaps in the storm, you can reweave one in Chapter 3." },
+      scout:      { label: "Canopy Watcher",   icon: "\u{1F985}", description: "From the high branches you see the storm front one chapter ahead." },
+      engineer:   { label: "Weaver",           icon: "\u{1FAA2}", description: "You lash vines across the widest gaps. Others can't cross the hollows." },
+      anchor:     { label: "Root Keeper",      icon: "\u{1F333}", description: "Your outpost is the oldest root. Anything connected to it holds through any storm." },
+      diplomat:   { label: "Griot",            icon: "\u{1F941}", description: "Once per chapter you can drum a private message to any outpost in the forest." },
     },
   },
 ];
@@ -138,6 +173,20 @@ export function getThemedCard(card: Card, scenario: Scenario): Card {
   const override = scenario.cardOverrides?.[card.id];
   if (!override) return card;
   return { ...card, title: override.title, icon: override.icon || card.icon, shapeHint: override.shapeHint, mapClue: override.mapClue };
+}
+
+// Helper: get themed ability for a scenario. Label, icon, and description can
+// each be overridden; anything not overridden falls back to the base ability
+// definition. Returns a new object so callers never mutate ABILITIES.
+export function getThemedAbility(ability: Ability, scenario: Scenario): Ability {
+  const override = scenario.abilityOverrides?.[ability.id];
+  if (!override) return ability;
+  return {
+    ...ability,
+    label: override.label ?? ability.label,
+    icon: override.icon ?? ability.icon,
+    description: override.description ?? ability.description,
+  };
 }
 
 // ── Constraint Cards ───────────────────────────────────────
@@ -333,10 +382,42 @@ export const NEW_PHASES = [
   "map_ch2",
   "map_ch3",
   "vote",
+  "reflection",
   "complete",
 ] as const;
 
 export type NewPhase = (typeof NEW_PHASES)[number];
+
+// ── Reflection Prompts ───────────────────────────────────────
+// Shown on ReflectionScreen between vote and complete. Answers are stored in
+// the debrief_answers table and surface on the facilitator dashboard.
+export const REFLECTION_PROMPTS = [
+  "Whose build surprised you \u2014 and what did it teach you about how they see the world?",
+  "When did you feel most essential to the team? When did you feel invisible?",
+  "One thing you'd carry from this game back into how your team actually works together.",
+] as const;
+
+// ── Complete Screen Copy ─────────────────────────────────────
+// Scenario-themed end-of-game messaging. Falls back to rising_tides copy if a
+// scenario id isn't listed.
+export const COMPLETE_COPY: Record<string, { title: string; subtitle: string }> = {
+  rising_tides: {
+    title: "THE HARBOR STANDS",
+    subtitle: "The seawall holds. The lighthouse burns again. Your team rebuilt a village no single person could have saved alone.",
+  },
+  last_orbit: {
+    title: "THE STATION HOLDS",
+    subtitle: "Every module connected. Every corridor sealed. Your crew held the station together when the void tried to pry it apart.",
+  },
+  deep_current: {
+    title: "THE DEEP GLOWS",
+    subtitle: "The coral sings again. The settlement is lit from within. Your team brought light back to a place that forgets the sun.",
+  },
+  roothold: {
+    title: "THE CANOPY WAKES",
+    subtitle: "The roots held. The vines are rewoven. Your team rebuilt something the forest will carry long after you're gone.",
+  },
+};
 
 // ── Clue Cards ───────────────────────────────────────────────
 // Architect picks 3 of 6 clue cards to guide their builder.
@@ -353,10 +434,10 @@ export const CLUE_CARDS: ClueCard[] = [
   // Shape clues — describe physical form
   { id: "cl_tall",    label: "Reach Up",       clueText: "Whatever you build, it should reach higher than it spreads.", category: "shape" },
   { id: "cl_wide",    label: "Spread Out",     clueText: "Think flat. Cover ground. Stay low to the earth.", category: "shape" },
-  { id: "cl_enclosed", label: "Seal It In",    clueText: "What's inside matters more than what's outside. Close it off.", category: "shape" },
+  { id: "cl_enclosed", label: "Build a Box",    clueText: "A four-walled container. Closed on top if you have the pieces.", category: "shape" },
   { id: "cl_pointed", label: "Come to a Point", clueText: "Narrow as you go up. End with something sharp or focused.", category: "shape" },
   { id: "cl_opening", label: "Make a Way In",  clueText: "There must be a clear entrance. A way through, not a wall.", category: "shape" },
-  { id: "cl_dense",   label: "Pack It Tight",  clueText: "Use the smallest space possible. Every piece touching another.", category: "shape" },
+  { id: "cl_dense",   label: "Solid Cube",     clueText: "No air gaps. Every piece touches another piece. A dense block.", category: "shape" },
 
   // Feel clues — describe mood or function
   { id: "cl_safe",    label: "Safe Haven",     clueText: "Someone should feel protected here. Sheltered.", category: "feel" },
@@ -369,7 +450,7 @@ export const CLUE_CARDS: ClueCard[] = [
   // Story clues — describe narrative purpose
   { id: "cl_first",   label: "The Beginning",  clueText: "This is where everything starts. The origin point.", category: "story" },
   { id: "cl_last",    label: "The End",         clueText: "This is the final stop. Nothing comes after this.", category: "story" },
-  { id: "cl_hidden",  label: "Secret Place",   clueText: "Not everyone knows about this. It's tucked away, hard to find.", category: "story" },
+  { id: "cl_hidden",  label: "Hide a Piece",   clueText: "Bury one piece inside or under another. Only visible from a single angle.", category: "story" },
   { id: "cl_landmark", label: "You Can't Miss It", clueText: "Everyone sees this first. It's the thing you point to from far away.", category: "story" },
   { id: "cl_gather",  label: "Meeting Point",  clueText: "People come here to decide things together. A center of gravity.", category: "story" },
   { id: "cl_edge",    label: "On the Border",  clueText: "Right at the edge. Between what's known and what's beyond.", category: "story" },
@@ -389,27 +470,27 @@ export interface Ability {
 
 export const ABILITIES: Ability[] = [
   {
-    id: "pathfinder",
-    label: "Pathfinder",
-    icon: "\u{1F9ED}",
-    description: "You can see the zone labels on the map. Others see only blank spaces. Guide your team.",
-    hrNote: "Give to someone who needs to speak up more. The team literally cannot place districts without their input.",
-    mechanic: "Zone labels visible only to this player during map_ch1. Others see unlabeled slots.",
+    id: "mender",
+    label: "Mender",
+    icon: "\u{1F9F0}",
+    description: "When the Chapter 2 crisis breaks a connection, you can rebuild it in Chapter 3.",
+    hrNote: "One-shot Chapter 3 lever: restores a single connection lost to the crisis.",
+    mechanic: "Once during Chapter 3, can re-insert the connection the Chapter 2 crisis removed.",
   },
   {
     id: "scout",
     label: "Scout",
     icon: "\u{1F52D}",
     description: "You see the next crisis card one chapter before everyone else. Use this knowledge wisely.",
-    hrNote: "Give to someone whose input gets overlooked. They will have information the team needs.",
-    mechanic: "During map_ch1, sees the crisis card that drops in map_ch2. During map_ch2, sees ch3 pattern hint.",
+    hrNote: "Holds one chapter of foreknowledge about the upcoming crisis card.",
+    mechanic: "During Chapter 1, sees the crisis card that will drop in Chapter 2.",
   },
   {
     id: "engineer",
     label: "Engineer",
     icon: "\u{1F527}",
     description: "Your connections can cross the river or hazard zones. Others cannot bridge those gaps.",
-    hrNote: "Give to someone technical who stays quiet. Their ability is powerful but only if they volunteer it.",
+    hrNote: "Only ability that can place connections across hazard terrain.",
     mechanic: "Connection placement ignores hazard/river restrictions. Others' connections cannot cross these zones.",
   },
   {
@@ -417,7 +498,7 @@ export const ABILITIES: Ability[] = [
     label: "Anchor",
     icon: "\u{1F6E1}\uFE0F",
     description: "Your district is a safe zone. Any district connected to yours is protected from crisis damage.",
-    hrNote: "Give to someone who needs their value recognized. Their mere presence on the map protects others.",
+    hrNote: "Creates a protective ring: any district linked to Anchor's survives the Chapter 2 crisis.",
     mechanic: "Districts adjacent to or connected to Anchor's district are immune to crisis card negative effects.",
   },
   {
@@ -425,7 +506,7 @@ export const ABILITIES: Ability[] = [
     label: "Diplomat",
     icon: "\u{1F91D}",
     description: "Once per chapter, you can open a 60-second private chat with any one player.",
-    hrNote: "Give to someone who builds relationships. They can broker deals and share info privately.",
+    hrNote: "Opens a one-off private channel per chapter for side conversations.",
     mechanic: "One-time per chapter: opens a private 60s chat channel with a selected player. Others cannot see it.",
   },
 ];
@@ -473,7 +554,7 @@ export const CRISIS_CARDS: CrisisCard[] = [
     icon: "\u26A1",
     description: "A rift opens across the map. Connections crossing the center line are severed.",
     effect: "All connections crossing the map centerline are removed.",
-    counterplay: "Engineer can rebuild across the rift. Pathfinder can see safe crossing points.",
+    counterplay: "Engineer can rebuild across the rift. Mender can restore one severed connection in Chapter 3.",
   },
 ];
 

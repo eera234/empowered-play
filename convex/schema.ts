@@ -16,6 +16,16 @@ export default defineSchema({
     subPhaseDeadline: v.optional(v.number()),     // unix ms timestamp for current sub-phase end
     crisisCardId: v.optional(v.string()),         // active crisis card ID during map_ch2
     hiddenPatternRevealed: v.optional(v.boolean()), // true once pattern shown in map_ch3
+    // Snapshot of the connection the Ch2 crisis removed. Mender ability
+    // reads this to know what to restore in Ch3. Cleared when repaired or
+    // when the next crisis fires.
+    lostConnection: v.optional(v.object({
+      fromSlotId: v.string(),
+      toSlotId: v.string(),
+      builtBy: v.id("players"),
+      photoDataUrl: v.optional(v.string()),
+    })),
+    menderUsed: v.optional(v.boolean()),           // true once the Mender has repaired
   }).index("by_code", ["code"]),
 
   players: defineTable({
@@ -33,9 +43,12 @@ export default defineSchema({
     slotId: v.optional(v.string()),
     isFacilitator: v.boolean(),
     // New optional fields for the redesigned game
-    ability: v.optional(v.string()),             // "pathfinder" | "scout" | "engineer" | "anchor" | "diplomat" | null (citizen)
+    ability: v.optional(v.string()),             // "mender" | "scout" | "engineer" | "anchor" | "diplomat" | null (citizen)
     architectFor: v.optional(v.id("players")),   // who this player gives clues to
     builderFor: v.optional(v.id("players")),     // who gives clues to this player (reverse of architectFor)
+    roleSeenAt: v.optional(v.number()),          // ms timestamp when player acknowledged the role reveal
+    targetZone: v.optional(v.string()),          // Ch1 target-zone slot id the player should place their district near
+    ch1Placed: v.optional(v.boolean()),          // true once the player's x/y is within tolerance of targetZone
   }).index("by_session", ["sessionId"]),
 
   messages: defineTable({

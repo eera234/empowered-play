@@ -155,6 +155,15 @@ export const markCardRead = mutation({
   },
 });
 
+// Player acknowledges the role reveal animation. Used by the facilitator's
+// advance gate to know when every non-facilitator has seen their role card.
+export const markRoleSeen = mutation({
+  args: { playerId: v.id("players") },
+  handler: async (ctx, { playerId }) => {
+    await ctx.db.patch(playerId, { roleSeenAt: Date.now() });
+  },
+});
+
 export const advancePhase = mutation({
   args: { sessionId: v.id("sessions") },
   handler: async (ctx, { sessionId }) => {
@@ -226,6 +235,43 @@ export const moveDistrict = mutation({
   args: { playerId: v.id("players"), x: v.number(), y: v.number(), slotId: v.optional(v.string()) },
   handler: async (ctx, { playerId, x, y, slotId }) => {
     await ctx.db.patch(playerId, { x, y, slotId });
+  },
+});
+
+// Assign Ch1 target zones to every non-facilitator player who doesn't already
+// have one. Called once by the frontend on entering map_ch1. Idempotent — if
+// a player already has a targetZone, we keep it. Shuffles the zone pool so
+// each player gets a distinct target when possible; after the pool is
+// exhausted we cycle (> 9 players is not expected for this game).
+export const seedCh1Targets = mutation({
+  args: { sessionId: v.id("sessions"), zoneIds: v.array(v.string()) },
+  handler: async (ctx, { sessionId, zoneIds }) => {
+    if (zoneIds.length === 0) return;
+    const players = await ctx.db
+      .query("players")
+      .withIndex("by_session", (q) => q.eq("sessionId", sessionId))
+      .collect();
+    const pool = [...zoneIds];
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    let cursor = 0;
+    for (const p of players) {
+      if (p.isFacilitator) continue;
+      if (p.targetZone) continue;
+      await ctx.db.patch(p._id, { targetZone: pool[cursor % pool.length], ch1Placed: false });
+      cursor += 1;
+    }
+  },
+});
+
+// Update a player's Ch1 placement flag. The client does the proximity math
+// (it has the slot x/y tables) and tells us the boolean result. Cheap patch.
+export const setCh1Placed = mutation({
+  args: { playerId: v.id("players"), placed: v.boolean() },
+  handler: async (ctx, { playerId, placed }) => {
+    await ctx.db.patch(playerId, { ch1Placed: placed });
   },
 });
 

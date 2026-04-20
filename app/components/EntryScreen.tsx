@@ -5,6 +5,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { useGame } from "../GameContext";
 import { SCENARIOS } from "../../lib/constants";
+import BrandBar from "./BrandBar";
 
 // ── Full-screen background: colorful LEGO city skyline at night with water ──
 function BackgroundSkyline() {
@@ -329,6 +330,126 @@ function CityscapeIllustration() {
           <circle cx={lx} cy="127" r="5" fill="url(#cs-lamp)" />
         </g>
       ))}
+    </svg>
+  );
+}
+
+// Harborside — fishing village with a lighthouse, cottages, seawall, and boats.
+// Replaces the old CityscapeIllustration for the rising_tides scenario.
+function HarborsideIllustration() {
+  return (
+    <svg viewBox="0 0 280 160" className="sc-illustration">
+      <defs>
+        <linearGradient id="hs-sky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#061028" />
+          <stop offset="55%" stopColor="#0f2042" />
+          <stop offset="100%" stopColor="#1a3a5a" />
+        </linearGradient>
+        <linearGradient id="hs-sea" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#0a2a44" />
+          <stop offset="100%" stopColor="#041828" />
+        </linearGradient>
+        <radialGradient id="hs-beacon" cx=".5" cy=".5" r=".5">
+          <stop offset="0%" stopColor="#FFE8A0" stopOpacity=".9" />
+          <stop offset="100%" stopColor="#FFC040" stopOpacity="0" />
+        </radialGradient>
+        <radialGradient id="hs-moon" cx=".5" cy=".5" r=".5">
+          <stop offset="0%" stopColor="#FFF3D0" />
+          <stop offset="100%" stopColor="#FFF3D0" stopOpacity="0" />
+        </radialGradient>
+      </defs>
+
+      {/* Sky + distant moon + stars */}
+      <rect width="280" height="160" fill="url(#hs-sky)" />
+      <circle cx="225" cy="30" r="14" fill="url(#hs-moon)" />
+      <circle cx="225" cy="30" r="7" fill="#FFF3D0" opacity=".9" />
+      {[[18,10],[48,22],[92,8],[138,18],[178,12],[205,25],[258,18],[268,6],[30,40],[110,32],[162,38],[240,45]]
+        .map(([x,y],i)=>(
+          <circle key={`hs-st${i}`} cx={x} cy={y} r={i%4===0?1.3:0.6}
+            fill={i%3===0?"#FFF3D0":"#cfe4ff"} opacity={0.35+(i%4)*0.15} />
+      ))}
+
+      {/* Sea */}
+      <rect x="0" y="108" width="280" height="52" fill="url(#hs-sea)" />
+      {[[14,116],[46,120],[92,115],[132,124],[178,118],[220,122],[256,116],[20,140],[70,138],[128,142],[190,140],[244,138]]
+        .map(([x,y],i)=>(
+          <path key={`hs-wv${i}`} d={`M${x} ${y} q 4 -2 8 0 q 4 2 8 0`} stroke="rgba(180,220,255,.4)" strokeWidth=".8" fill="none" />
+      ))}
+
+      {/* Left cliff + lighthouse */}
+      <path d="M0 100 L0 108 L55 108 L62 96 L48 88 L30 90 L18 84 L0 90 Z" fill="#1d3040" />
+      <path d="M0 90 L18 84 L30 90 L48 88 L62 96 L55 108 L0 108 Z" fill="none" stroke="rgba(255,255,255,.06)" strokeWidth=".5" />
+      {/* Grass tuft */}
+      <ellipse cx="28" cy="88" rx="8" ry="2" fill="#2d5a3a" opacity=".7" />
+      {/* Lighthouse body */}
+      <rect x="22" y="52" width="10" height="36" fill="#E8E8E8" />
+      {[56,64,72,80].map((sy,i)=>(
+        <rect key={`hs-ls${i}`} x="22" y={sy} width="10" height="4" fill="#C43A3A" />
+      ))}
+      <rect x="22" y="52" width="10" height="2" fill="rgba(255,255,255,.4)" />
+      {/* Lantern room + beacon */}
+      <rect x="20" y="45" width="14" height="7" fill="#3a3a3a" />
+      <rect x="21" y="42" width="12" height="3" fill="#E8E8E8" />
+      <polygon points="20,42 27,34 34,42" fill="#C43A3A" />
+      <circle cx="27" cy="48" r="12" fill="url(#hs-beacon)" />
+      <circle cx="27" cy="48" r="2.5" fill="#FFE8A0" />
+
+      {/* Seawall — curving stone line along the low harbour */}
+      <path d="M55 108 L70 106 L90 104 L120 104 L150 105 L185 106 L220 107 L250 108 L280 108 L280 114 L55 114 Z" fill="#3a3a3a" />
+      <path d="M55 108 L70 106 L90 104 L120 104 L150 105 L185 106 L220 107 L250 108 L280 108" stroke="rgba(255,255,255,.12)" strokeWidth=".6" fill="none" />
+      {[62,78,96,116,138,160,184,208,232,258].map((sx,i)=>(
+        <rect key={`hs-sb${i}`} x={sx} y="109" width="10" height="5" fill="none" stroke="rgba(0,0,0,.35)" strokeWidth=".6" />
+      ))}
+
+      {/* Fishing cottages clustered inland — each a pitched-roof brick */}
+      {[
+        { x: 70,  w: 22, roof: "#8C3A2A", wall: "#E8D8B0" },
+        { x: 100, w: 26, roof: "#6B4A2A", wall: "#DDBFA0" },
+        { x: 135, w: 22, roof: "#8C3A2A", wall: "#D8C28A" },
+        { x: 162, w: 28, roof: "#6B4A2A", wall: "#E8D8B0" },
+        { x: 198, w: 20, roof: "#8C3A2A", wall: "#DDBFA0" },
+      ].map((c, i) => {
+        const y = 84, h = 20;
+        return (
+          <g key={`hs-h${i}`}>
+            {/* Wall */}
+            <rect x={c.x} y={y} width={c.w} height={h} fill={c.wall} />
+            <rect x={c.x} y={y} width={c.w} height="2" fill="rgba(255,255,255,.18)" />
+            <rect x={c.x + c.w - 3} y={y} width="3" height={h} fill="rgba(0,0,0,.22)" />
+            {/* Roof */}
+            <polygon points={`${c.x - 2},${y} ${c.x + c.w + 2},${y} ${c.x + c.w / 2},${y - 9}`} fill={c.roof} />
+            <polygon points={`${c.x - 2},${y} ${c.x + c.w / 2},${y - 9} ${c.x + c.w / 2 - 2},${y - 8}`} fill="rgba(255,255,255,.12)" />
+            {/* Warm window */}
+            <rect x={c.x + c.w / 2 - 2} y={y + 7} width="4" height="5" rx=".4" fill="#FFD070" opacity=".85" />
+            {/* Chimney */}
+            <rect x={c.x + c.w - 6} y={y - 11} width="3" height="5" fill="#666" />
+          </g>
+        );
+      })}
+
+      {/* Small pier on the right with rowboat tied up */}
+      <rect x="232" y="107" width="30" height="2" fill="#5a3c22" />
+      {[234,242,250,258].map((px,i)=>(
+        <rect key={`hs-pl${i}`} x={px} y="109" width="1.5" height="8" fill="#3a2612" />
+      ))}
+      <path d="M244 118 q 8 -2 16 0 l -1 4 q -7 1.5 -14 0 Z" fill="#8C4A2A" />
+      <path d="M244 118 q 8 -2 16 0" stroke="rgba(255,255,255,.2)" strokeWidth=".6" fill="none" />
+
+      {/* Two sailboats on the sea */}
+      <g>
+        <path d="M112 118 q 6 -2 12 0 l -1 3 q -5 1 -10 0 Z" fill="#6a4a2a" />
+        <line x1="118" y1="118" x2="118" y2="92" stroke="#6a4a2a" strokeWidth=".8" />
+        <polygon points="118,92 118,114 128,114" fill="#F5F0E0" />
+        <polygon points="118,96 118,112 112,112" fill="#E8DDC0" opacity=".9" />
+      </g>
+      <g>
+        <path d="M168 126 q 7 -2 14 0 l -1 3 q -6 1.5 -12 0 Z" fill="#5a3a22" />
+        <line x1="175" y1="126" x2="175" y2="104" stroke="#5a3a22" strokeWidth=".7" />
+        <polygon points="175,104 175,122 184,122" fill="#DDCBA0" />
+      </g>
+
+      {/* Small rocky islet far right mid-sea (matches map art continuity) */}
+      <path d="M260 132 q 4 -4 8 0 q -2 3 -8 2 Z" fill="#2a3a48" />
     </svg>
   );
 }
@@ -783,7 +904,7 @@ function OceanDepthsIllustration() {
 }
 
 export const SCENARIO_ILLUSTRATIONS: Record<string, () => React.JSX.Element> = {
-  rising_tides: CityscapeIllustration,
+  rising_tides: HarborsideIllustration,
   last_orbit: DeepSpaceIllustration,
   deep_current: OceanDepthsIllustration,
   roothold: RainforestIllustration,
@@ -795,8 +916,42 @@ export default function EntryScreen() {
   const joinAsFac = useMutation(api.game.joinSession);
   const [picking, setPicking] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
+  const [rejoining, setRejoining] = useState(false);
+  const [rejoinCode, setRejoinCode] = useState("");
+  const [rejoinError, setRejoinError] = useState("");
 
   const [loading, setLoading] = useState(false);
+
+  async function handleFacRejoin() {
+    setRejoinError("");
+    if (rejoinCode.trim().length < 4) {
+      setRejoinError("Enter the session code.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await joinAsFac({
+        code: rejoinCode.trim().toUpperCase(),
+        name: "Facilitator",
+        isFacilitator: true,
+      });
+      if (!res.success) {
+        setRejoinError(res.error || "Could not rejoin.");
+        return;
+      }
+      set({
+        role: "facilitator",
+        sessionCode: rejoinCode.trim().toUpperCase(),
+        sessionId: res.sessionId,
+        playerId: res.playerId,
+      });
+      goTo("s-fac-setup");
+    } catch {
+      setRejoinError("Connection error. Try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   function handleScenarioSelect(scenarioId: string) {
     setSelected(selected === scenarioId ? null : scenarioId);
@@ -880,6 +1035,53 @@ export default function EntryScreen() {
     );
   }
 
+  if (rejoining) {
+    return (
+      <div className="screen active" id="s-entry">
+        <BrandBar />
+        <div className="join-wrap">
+          <div className="join-card">
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontFamily: "'Black Han Sans', sans-serif", fontSize: 20, letterSpacing: 2, marginBottom: 4 }}>
+                REJOIN AS FACILITATOR
+              </div>
+              <div style={{ fontSize: 12, color: "var(--textd)" }}>
+                Enter the session code to reconnect.
+              </div>
+            </div>
+            <div>
+              <label className="field-lbl">Session code</label>
+              <input
+                className="linput code-s"
+                type="text"
+                placeholder="ENTER CODE"
+                maxLength={5}
+                value={rejoinCode}
+                onChange={(e) => setRejoinCode(e.target.value.toUpperCase())}
+              />
+            </div>
+            {rejoinError && <div className="err-msg show">{rejoinError}</div>}
+            <button
+              className="lb lb-yellow"
+              disabled={loading}
+              onClick={handleFacRejoin}
+              style={{ width: "100%" }}
+            >
+              {loading ? "Reconnecting\u2026" : "REJOIN \u2192"}
+            </button>
+            <button
+              className="lb lb-ghost"
+              onClick={() => { setRejoining(false); setRejoinCode(""); setRejoinError(""); }}
+              style={{ width: "100%", fontSize: 11 }}
+            >
+              Back
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="screen active" id="s-entry">
       <BackgroundSkyline />
@@ -911,6 +1113,20 @@ export default function EntryScreen() {
             <div className="mc-sub">Set up &amp; run the session</div>
           </div>
         </div>
+        <button
+          onClick={() => setRejoining(true)}
+          style={{
+            marginTop: 24,
+            background: "transparent",
+            border: "none",
+            color: "var(--textd)",
+            fontSize: 12,
+            textDecoration: "underline",
+            cursor: "pointer",
+          }}
+        >
+          Already running a session? Rejoin as facilitator &rarr;
+        </button>
       </div>
     </div>
   );

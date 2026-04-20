@@ -6,7 +6,7 @@ import { api } from "../../convex/_generated/api";
 import { toast } from "sonner";
 import { useGame } from "../GameContext";
 import BrandBar from "./BrandBar";
-import { SCENARIOS, ABILITIES } from "../../lib/constants";
+import { SCENARIOS, ABILITIES, getThemedAbility } from "../../lib/constants";
 import { SCENARIO_ILLUSTRATIONS } from "./EntryScreen";
 
 export default function FacSetupScreen() {
@@ -219,12 +219,13 @@ export default function FacSetupScreen() {
 
       {/* Ability detail modal (animated) */}
       {expandedAbility !== null && (() => {
-        const a = ABILITIES.find((ab) => ab.id === expandedAbility);
-        if (!a) return null;
+        const baseA = ABILITIES.find((ab) => ab.id === expandedAbility);
+        if (!baseA) return null;
+        const a = getThemedAbility(baseA, scenarioData);
         const assignedTo = Object.entries(abilityAssignments).find(([, aid]) => aid === a.id);
         const assignedPlayer = assignedTo ? nonFac.find((p) => p._id === assignedTo[0]) : null;
         const abilityColors: Record<string, string> = {
-          pathfinder: "#4FC3F7", scout: "#B388FF", engineer: "#FF7043", anchor: "#66BB6A", diplomat: "#FFD740",
+          mender: "#4FC3F7", scout: "#B388FF", engineer: "#FF7043", anchor: "#66BB6A", diplomat: "#FFD740",
         };
         const color = abilityColors[a.id] || "#B388FF";
         return (
@@ -300,9 +301,10 @@ export default function FacSetupScreen() {
                 {nonFac.map((p, idx) => {
                   const ability = abilityAssignments[p._id] || "";
                   const district = districtAssignments[p._id] || scenarioData.districtNames[idx] || "";
-                  const abilityData = ABILITIES.find((ab) => ab.id === ability);
+                  const baseAbility = ABILITIES.find((ab) => ab.id === ability);
+                  const abilityData = baseAbility ? getThemedAbility(baseAbility, scenarioData) : undefined;
                   const abilityColors: Record<string, string> = {
-                    pathfinder: "#4FC3F7", scout: "#B388FF", engineer: "#FF7043", anchor: "#66BB6A", diplomat: "#FFD740",
+                    mender: "#4FC3F7", scout: "#B388FF", engineer: "#FF7043", anchor: "#66BB6A", diplomat: "#FFD740",
                   };
 
                   return (
@@ -353,12 +355,13 @@ export default function FacSetupScreen() {
                           >
                             <option value="">Citizen</option>
                             {ABILITIES.map((ab) => {
+                              const themed = getThemedAbility(ab, scenarioData);
                               const alreadyUsed = Object.entries(abilityAssignments).some(
                                 ([pid, aid]) => aid === ab.id && pid !== p._id
                               );
                               return (
                                 <option key={ab.id} value={ab.id} disabled={alreadyUsed}>
-                                  {ab.icon} {ab.label}{alreadyUsed ? " (taken)" : ""}
+                                  {themed.icon} {themed.label}{alreadyUsed ? " (taken)" : ""}
                                 </option>
                               );
                             })}
@@ -465,14 +468,26 @@ export default function FacSetupScreen() {
                   )}
                 </>
               )}
-              {rolesSent && !pairingsGenerated && (
-                <button
-                  className="lb lb-yellow fac-advance-btn"
-                  onClick={handleGenerateAndStart}
-                >
-                  START PAIR BUILD {"\u2192"}
-                </button>
-              )}
+              {rolesSent && !pairingsGenerated && (() => {
+                const seenCount = nonFac.filter((p) => p.roleSeenAt).length;
+                const allSeen = nonFac.length > 0 && seenCount === nonFac.length;
+                return (
+                  <>
+                    <button
+                      className={`lb ${allSeen ? "lb-yellow" : "lb-ghost"} fac-advance-btn`}
+                      disabled={!allSeen}
+                      onClick={handleGenerateAndStart}
+                    >
+                      {allSeen ? "START PAIR BUILD \u2192" : `WAITING FOR ROLES (${seenCount}/${nonFac.length})`}
+                    </button>
+                    {!allSeen && (
+                      <div style={{ fontSize: 10, color: "var(--textdd)", marginTop: 6, textAlign: "center" }}>
+                        Enabled once everyone taps to acknowledge their role card.
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           </div>
 
@@ -513,11 +528,12 @@ export default function FacSetupScreen() {
               </div>
 
               {/* Ability cards */}
-              {ABILITIES.map((a) => {
+              {ABILITIES.map((baseA) => {
+                const a = getThemedAbility(baseA, scenarioData);
                 const assignedTo = Object.entries(abilityAssignments).find(([, aid]) => aid === a.id);
                 const assignedPlayer = assignedTo ? nonFac.find((p) => p._id === assignedTo[0]) : null;
                 const abilityColors: Record<string, string> = {
-                  pathfinder: "#4FC3F7", scout: "#B388FF", engineer: "#FF7043", anchor: "#66BB6A", diplomat: "#FFD740",
+                  mender: "#4FC3F7", scout: "#B388FF", engineer: "#FF7043", anchor: "#66BB6A", diplomat: "#FFD740",
                 };
                 const color = abilityColors[a.id] || "#B388FF";
 

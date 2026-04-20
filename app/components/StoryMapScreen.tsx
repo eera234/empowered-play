@@ -1,16 +1,16 @@
 "use client";
 
 import { useState, useRef, useEffect, MouseEvent, TouchEvent } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
-import { SCENARIOS, STORY_TEXT, ABILITIES, CRISIS_CARDS, POWER_CARDS, HIDDEN_PATTERNS } from "../../lib/constants";
+import { SCENARIOS, STORY_TEXT, ABILITIES, CRISIS_CARDS, POWER_CARDS, getThemedAbility } from "../../lib/constants";
+import { playSound } from "../../lib/sound";
 import { toast } from "sonner";
 import { useGame } from "../GameContext";
 import BrandBar from "./BrandBar";
-import WaterMap from "./maps/WaterMap";
-import SpaceMap from "./maps/SpaceMap";
-import OceanMap from "./maps/OceanMap";
+import ThemedMap from "./maps/ThemedMap";
+import { pickPhotoFile } from "./cameraFallback";
 
 // ── Placement slots per theme (reused from CityMapScreen) ──
 interface PlacementSlot {
@@ -82,10 +82,15 @@ export default function StoryMapScreen() {
   const advanceNewPhase = useMutation(api.game.advanceNewPhase);
   const placeConnection = useMutation(api.mapPhase.placeConnection);
   const removeConnection = useMutation(api.mapPhase.removeConnection);
+  const uploadConnectionPhoto = useMutation(api.mapPhase.uploadConnectionPhoto);
   const dealCrisisCard = useMutation(api.mapPhase.dealCrisisCard);
   const dealPowerCard = useMutation(api.mapPhase.dealPowerCard);
   const usePowerCardMut = useMutation(api.mapPhase.usePowerCard);
   const revealPattern = useMutation(api.mapPhase.revealPattern);
+  const clearCrisis = useMutation(api.mapPhase.clearCrisis);
+  const repairConnection = useMutation(api.mapPhase.repairConnection);
+  const seedCh1Targets = useMutation(api.game.seedCh1Targets);
+  const setCh1PlacedMut = useMutation(api.game.setCh1Placed);
 
   const isLoading = session === undefined || players === undefined;
 
@@ -100,93 +105,94 @@ export default function StoryMapScreen() {
   const nonFac = (players ?? []).filter((p) => !p.isFacilitator);
   const me = nonFac.find((p) => p._id === playerId);
   const myAbility = me?.ability;
-  const isPathfinder = myAbility === "pathfinder";
+  const isMender = myAbility === "mender";
   const isFacilitator = role === "facilitator";
 
-  const placed = nonFac.filter((p) => p.slotId);
-  const unplaced = nonFac.filter((p) => !p.slotId);
-  const occupiedSlotIds = new Set(placed.map((p) => p.slotId!).filter(Boolean));
+  // "Placed" = player has been dragged to an explicit x/y on the map. Free
+  // movement — no slot snapping, overlaps allowed — so x/y is the only signal.
+  const placed = nonFac.filter((p) => p.x !== undefined && p.y !== undefined);
+  const unplaced = nonFac.filter((p) => p.x === undefined || p.y === undefined);
   const allPlaced = nonFac.length > 0 && unplaced.length === 0;
 
   // ── Narration dismissal ──
+  // Show the full narration on phase change, then auto-collapse after 10s so
+  // the map gets more room. Players can read the gist in that window; a thin
+  // "Chapter X · Title" strip stays pinned once it's collapsed.
   const [narrationVisible, setNarrationVisible] = useState(true);
   useEffect(() => {
     setNarrationVisible(true);
+    const t = setTimeout(() => setNarrationVisible(false), 10000);
+    return () => clearTimeout(t);
   }, [phase]);
+
+  // Seed Ch1 target zones exactly once per session. The facilitator fires
+  // this; other clients observe the targetZone field appearing on players.
+  // The mutation itself is idempotent (skips players who already have one).
+  useEffect(() => {
+    if (phase !== "map_ch1") return;
+    if (!isFacilitator || !sessionId) return;
+    const anyMissing = nonFac.some((p) => !p.targetZone);
+    if (!anyMissing) return;
+    seedCh1Targets({ sessionId, zoneIds: slots.map((s) => s.id) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, isFacilitator, sessionId, nonFac.length]);
 
   // ── Drag state (percentages) ──
   const mapRef = useRef<HTMLDivElement>(null);
   const [dragPos, setDragPos] = useState<{ id: string; x: number; y: number } | null>(null);
 
-  // ── Ch2: connection-building state ──
-  const [selectedForConnection, setSelectedForConnection] = useState<string | null>(null); // slotId
+  // ── Ch2/Ch3: connection-building state ──
+  // Free movement means connections are player-to-player, not slot-to-slot.
+  // The string stored in connections.fromSlotId / toSlotId is the player _id.
+  const [selectedForConnection, setSelectedForConnection] = useState<string | null>(null); // playerId
+  // When both ends are picked, we store the pair and open the camera modal.
+  const [pendingConnectionPair, setPendingConnectionPair] = useState<{ fromId: string; toId: string } | null>(null);
+  const [connectionPhoto, setConnectionPhoto] = useState<string | null>(null);
+  const [connectionCameraActive, setConnectionCameraActive] = useState(false);
+  const connectionVideoRef = useRef<HTMLVideoElement>(null);
+  const connectionCanvasRef = useRef<HTMLCanvasElement>(null);
+  const connectionStreamRef = useRef<MediaStream | null>(null);
+  const [connectionUploading, setConnectionUploading] = useState(false);
+  const detectBlocks = useAction(api.detectLego.detectBuildingBlocks);
   const [facCrisisPickerOpen, setFacCrisisPickerOpen] = useState(false);
   const [facPowerPickerOpen, setFacPowerPickerOpen] = useState<string | null>(null); // playerId we're dealing to
   const [powerModalOpen, setPowerModalOpen] = useState<string | null>(null); // power_cards._id being used
-  const [crisisBannerDismissed, setCrisisBannerDismissed] = useState(false);
 
   const isCh2 = phase === "map_ch2";
   const isCh3 = phase === "map_ch3";
   const activeCrisis = session?.crisisCardId ? CRISIS_CARDS.find((c) => c.id === session.crisisCardId) : null;
   const myUnusedPowerCards = (myPowerCards ?? []).filter((c) => !c.used);
 
-  // ── Ch3: resolve hidden pattern deterministically per scenario ──
-  // Map index (0-8) → slot ID using the ordering in PLACEMENT_SLOTS for this theme.
-  function patternForScenario(): typeof HIDDEN_PATTERNS[number] {
-    const hash = (scenarioId || "rising_tides").split("").reduce((a, c) => ((a << 5) - a + c.charCodeAt(0)) | 0, 0);
-    const idx = Math.abs(hash) % HIDDEN_PATTERNS.length;
-    return HIDDEN_PATTERNS[idx];
-  }
-  const pattern = patternForScenario();
-  const patternRevealed = !!session?.hiddenPatternRevealed;
+  // ── Ch3: map-rebuilt state ──
+  // `hiddenPatternRevealed` is repurposed as the "rebuilt" flag. The facilitator
+  // sets it once Ch3 Rally discussion is done and the team has repaired what
+  // they wanted; the map crossfades from damaged to rebuilt.
+  const mapRebuilt = !!session?.hiddenPatternRevealed;
 
-  // Required pair set as sorted "a|b" strings so we can match regardless of direction
-  const requiredPairs = pattern.connections.map(([a, b]) => {
-    const slotA = slots[a]?.id;
-    const slotB = slots[b]?.id;
-    if (!slotA || !slotB) return null;
-    return slotA < slotB ? `${slotA}|${slotB}` : `${slotB}|${slotA}`;
-  }).filter(Boolean) as string[];
-  const requiredSet = new Set(requiredPairs);
-  const builtSet = new Set(
-    (connections ?? []).map((c) => {
-      const a = c.fromSlotId, b = c.toSlotId;
-      return a < b ? `${a}|${b}` : `${b}|${a}`;
-    })
-  );
-  const matched = requiredPairs.filter((k) => builtSet.has(k));
-  const extras = Array.from(builtSet).filter((k) => !requiredSet.has(k));
-  const patternComplete = isCh3 && requiredSet.size > 0 && matched.length === requiredSet.size && extras.length === 0;
-
-  // Scout ability: during ch1 they see a preview of the ch2 crisis; during ch2 they see a ch3 pattern hint
+  // Scout ability (Ch2 only): flavour text hint. Crisis preview not implemented.
   const isScout = myAbility === "scout";
 
-  // Tap a placed district to start or complete a connection.
-  // Works in Ch2 and Ch3. In Ch3, if the two tapped slots already have a connection, remove it.
-  function handleDistrictTap(slotId: string) {
-    if (!(isCh2 || isCh3) || !sessionId || !playerId || !slotId) return;
+  // Tap a district in Ch2/Ch3 to pick it as one end of a connection. When both
+  // ends are picked we open the camera modal so the player can photograph the
+  // physical LEGO bridge they've built between their two builds.
+  function handleDistrictTap(targetPlayerId: string) {
+    if (!(isCh2 || isCh3) || !sessionId || !playerId || !targetPlayerId) return;
     // First tap
     if (!selectedForConnection) {
-      setSelectedForConnection(slotId);
+      setSelectedForConnection(targetPlayerId);
       return;
     }
-    // Same tile tapped again — cancel
-    if (selectedForConnection === slotId) {
+    // Same district tapped again — cancel selection
+    if (selectedForConnection === targetPlayerId) {
       setSelectedForConnection(null);
       return;
     }
-    const from = slots.find((s) => s.id === selectedForConnection);
-    if (!from) { setSelectedForConnection(null); return; }
-    if (!from.adjacent.includes(slotId)) {
-      toast("Those zones aren't adjacent");
-      return;
-    }
+    // Already connected? Ch3 lets you remove; Ch2 just complains.
     const existing = (connections ?? []).find(
       (c) =>
-        (c.fromSlotId === selectedForConnection && c.toSlotId === slotId) ||
-        (c.fromSlotId === slotId && c.toSlotId === selectedForConnection)
+        (c.fromSlotId === selectedForConnection && c.toSlotId === targetPlayerId) ||
+        (c.fromSlotId === targetPlayerId && c.toSlotId === selectedForConnection)
     );
-    // Ch3: tap an existing connection to remove it
     if (existing && isCh3) {
       removeConnection({ connectionId: existing._id })
         .then(() => { setSelectedForConnection(null); toast("Connection removed"); })
@@ -198,23 +204,128 @@ export default function StoryMapScreen() {
       setSelectedForConnection(null);
       return;
     }
-    placeConnection({ sessionId, fromSlotId: selectedForConnection, toSlotId: slotId, builtBy: playerId })
-      .then(() => { setSelectedForConnection(null); toast("Connection built"); })
-      .catch(() => toast("Couldn't place connection"));
+    // Open the camera modal so the player photographs their LEGO bridge.
+    setPendingConnectionPair({ fromId: selectedForConnection, toId: targetPlayerId });
+    setSelectedForConnection(null);
+    setConnectionPhoto(null);
+    startConnectionCamera();
+  }
+
+  // Camera flow for connection photos (mirrors PairBuildScreen capture).
+  async function startConnectionCamera() {
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+      connectionStreamRef.current = s;
+      if (connectionVideoRef.current) connectionVideoRef.current.srcObject = s;
+      setConnectionCameraActive(true);
+    } catch (err) {
+      const name = (err as { name?: string } | null)?.name;
+      setConnectionCameraActive(false);
+      if (name === "NotAllowedError" || name === "SecurityError") {
+        toast("Camera blocked — using photo upload instead.");
+        await handleConnectionUploadFallback();
+      } else {
+        toast("Camera unavailable — tap UPLOAD PHOTO to continue.");
+      }
+    }
+  }
+  function stopConnectionCamera() {
+    connectionStreamRef.current?.getTracks().forEach((t) => t.stop());
+    connectionStreamRef.current = null;
+    setConnectionCameraActive(false);
+  }
+  async function processConnectionDataUrl(dataUrl: string) {
+    playSound("photo");
+    setConnectionPhoto(dataUrl);
+    if (!process.env.NEXT_PUBLIC_SKIP_DETECTION) {
+      try {
+        const result = await detectBlocks({ imageBase64: dataUrl.split(",")[1] });
+        if (result.isLego) { playSound("lego-detected"); toast("LEGO bridge detected"); }
+        else toast("No building blocks detected. Retake with the bridge in frame.");
+      } catch {
+        toast("Could not verify. Upload allowed.");
+      }
+    }
+  }
+  async function captureConnectionPhoto() {
+    const v = connectionVideoRef.current, c = connectionCanvasRef.current;
+    if (!v || !c) return;
+    c.width = v.videoWidth; c.height = v.videoHeight;
+    c.getContext("2d")?.drawImage(v, 0, 0);
+    const dataUrl = c.toDataURL("image/jpeg", 0.85);
+    stopConnectionCamera();
+    await processConnectionDataUrl(dataUrl);
+  }
+  async function handleConnectionUploadFallback() {
+    const dataUrl = await pickPhotoFile();
+    if (!dataUrl) return;
+    await processConnectionDataUrl(dataUrl);
+  }
+  async function submitConnection() {
+    if (!sessionId || !playerId || !pendingConnectionPair || !connectionPhoto) return;
+    setConnectionUploading(true);
+    try {
+      const result = await placeConnection({
+        sessionId,
+        fromSlotId: pendingConnectionPair.fromId,
+        toSlotId: pendingConnectionPair.toId,
+        builtBy: playerId,
+      });
+      if (!result?.success) {
+        toast(result?.error || "Couldn't place connection");
+        return;
+      }
+      // Attach the bridge photo to the new connection immediately.
+      await uploadConnectionPhoto({ connectionId: result.connectionId, photoDataUrl: connectionPhoto });
+      toast("Connection built");
+      setPendingConnectionPair(null);
+      setConnectionPhoto(null);
+    } catch {
+      toast("Couldn't place connection");
+    } finally {
+      setConnectionUploading(false);
+    }
+  }
+  function cancelConnection() {
+    stopConnectionCamera();
+    setPendingConnectionPair(null);
+    setConnectionPhoto(null);
   }
 
   async function handleDealCrisis(cardId: string) {
     if (!sessionId) return;
     await dealCrisisCard({ sessionId, crisisCardId: cardId });
     setFacCrisisPickerOpen(false);
-    setCrisisBannerDismissed(false);
+    playSound("crisis-reveal");
     toast("Crisis dealt");
+  }
+
+  async function handleClearCrisis() {
+    if (!sessionId) return;
+    await clearCrisis({ sessionId });
+    toast("Crisis cleared");
+  }
+
+  async function handleRepairConnection() {
+    if (!sessionId || !playerId) return;
+    const res = await repairConnection({ sessionId, playerId });
+    if (!res.success) {
+      toast(res.error || "Repair failed");
+      return;
+    }
+    playSound("lego-detected");
+    toast("Connection restored");
   }
 
   async function handleDealPower(targetPlayerId: string, cardId: string) {
     if (!sessionId) return;
-    await dealPowerCard({ sessionId, playerId: targetPlayerId as Id<"players">, cardId });
+    const result = await dealPowerCard({ sessionId, playerId: targetPlayerId as Id<"players">, cardId });
+    if (result?.success === false) {
+      toast(result.error || "Couldn't deal power card");
+      return;
+    }
     setFacPowerPickerOpen(null);
+    playSound("power-dealt");
     toast("Power card dealt");
   }
 
@@ -225,8 +336,7 @@ export default function StoryMapScreen() {
   }
 
   function startDrag(e: MouseEvent | TouchEvent, pId: Id<"players">) {
-    // In Ch1 only: players can only drag their own district
-    // Ch2+: placements are locked
+    // Ch1 only: players can only drag their own district. Ch2+: positions lock.
     if (phase !== "map_ch1") return;
     if (pId !== playerId) return;
     e.preventDefault();
@@ -238,9 +348,10 @@ export default function StoryMapScreen() {
     const mousePctX = ((touch.clientX - mapRect.left) / mapRect.width) * 100;
     const mousePctY = ((touch.clientY - mapRect.top) / mapRect.height) * 100;
     const player = nonFac.find((p) => p._id === pId);
-    const slot = player?.slotId ? slots.find((s) => s.id === player.slotId) : null;
-    const cardPctX = slot ? slot.x : (player?.x ?? 50);
-    const cardPctY = slot ? slot.y : (player?.y ?? 50);
+    // Free movement: no slot snap. Use the player's stored x/y or a starting
+    // default if they've never been placed.
+    const cardPctX = player?.x ?? 50;
+    const cardPctY = player?.y ?? 50;
     const offX = mousePctX - cardPctX;
     const offY = mousePctY - cardPctY;
 
@@ -281,19 +392,25 @@ export default function StoryMapScreen() {
   }
 
   function handleDrop(pId: Id<"players">, dropX: number, dropY: number) {
-    const currentOccupied = new Set(
-      nonFac.filter((p) => p.slotId && p._id !== pId).map((p) => p.slotId!)
-    );
-    const availableSlots = slots.filter((s) => !currentOccupied.has(s.id));
-    if (availableSlots.length === 0) {
-      toast("No open zones left");
-      return;
+    // Free movement: persist exactly where the player released, with clamping
+    // so the card can never land off the map. No slot snap, no slot id.
+    const x = Math.max(2, Math.min(95, dropX));
+    const y = Math.max(2, Math.min(92, dropY));
+    moveDistrict({ playerId: pId, x, y });
+
+    // Ch1 objective: if this player has a target zone, compute proximity and
+    // flip the ch1Placed flag. 15% viewport distance is the tolerance — loose
+    // enough for fat-fingered drops, tight enough that wild placement fails.
+    const player = nonFac.find((p) => p._id === pId);
+    if (phase === "map_ch1" && player?.targetZone) {
+      const slot = slots.find((s) => s.id === player.targetZone);
+      if (slot) {
+        const dx = x - slot.x;
+        const dy = y - slot.y;
+        const within = Math.sqrt(dx * dx + dy * dy) <= 15;
+        if (!!player.ch1Placed !== within) setCh1PlacedMut({ playerId: pId, placed: within });
+      }
     }
-    const sorted = availableSlots
-      .map((slot) => ({ slot, dist: Math.sqrt((dropX - slot.x) ** 2 + (dropY - slot.y) ** 2) }))
-      .sort((a, b) => a.dist - b.dist);
-    const best = sorted[0].slot;
-    moveDistrict({ playerId: pId, x: best.x, y: best.y, slotId: best.id });
   }
 
   async function handleAdvance() {
@@ -306,9 +423,6 @@ export default function StoryMapScreen() {
     }
     await advanceNewPhase({ sessionId });
   }
-
-  // ── Map backdrop ──
-  const MapBg = mapTheme === "water" ? WaterMap : mapTheme === "space" ? SpaceMap : mapTheme === "ocean" ? OceanMap : WaterMap;
 
   if (isLoading) {
     return (
@@ -325,16 +439,16 @@ export default function StoryMapScreen() {
     <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", background: "var(--bg0)", color: "white" }}>
       <BrandBar badge={isFacilitator ? "FACILITATOR" : undefined} />
 
-      {/* ── Narration header (dismissible) ── */}
-      {narrationVisible && chapterText && (
+      {/* ── Narration header — full when open, thin pinned strip once collapsed ── */}
+      {chapterText && (narrationVisible ? (
         <div style={{
           background: "linear-gradient(180deg, rgba(255,215,0,.06), transparent)",
           borderBottom: "1px solid var(--border)",
-          padding: "14px 16px 16px",
+          padding: "10px 16px 12px",
           position: "relative",
           animation: "fadeIn .6s ease-out",
         }}>
-          <div style={{ textAlign: "center", marginBottom: 6 }}>
+          <div style={{ textAlign: "center", marginBottom: 4 }}>
             <div style={{
               fontFamily: "'Black Han Sans', sans-serif", fontSize: 10,
               letterSpacing: 2.5, color: "var(--textd)", textTransform: "uppercase",
@@ -342,36 +456,112 @@ export default function StoryMapScreen() {
               {scenarioData.title} {"\u00B7"} Chapter {chapterNum} of 3
             </div>
             <div style={{
-              fontFamily: "'Black Han Sans', sans-serif", fontSize: 22, letterSpacing: 2,
-              color: "var(--acc1)", marginTop: 4,
+              fontFamily: "'Black Han Sans', sans-serif", fontSize: 18, letterSpacing: 1.5,
+              color: "var(--acc1)", marginTop: 2,
             }}>
               {chapterText.title}
             </div>
           </div>
           <div style={{
             maxWidth: 680, margin: "0 auto",
-            fontSize: 13, color: "var(--textd)", fontStyle: "italic", lineHeight: 1.7, textAlign: "center",
+            fontSize: 12, color: "var(--textd)", fontStyle: "italic", lineHeight: 1.55, textAlign: "center",
           }}>
             &ldquo;{chapterText.narration}&rdquo;
           </div>
           <button
             onClick={() => setNarrationVisible(false)}
             style={{
-              position: "absolute", top: 8, right: 12,
+              position: "absolute", top: 6, right: 10,
               background: "none", border: "none", color: "var(--textdd)",
-              cursor: "pointer", fontSize: 11, letterSpacing: 1.5,
+              cursor: "pointer", fontSize: 10, letterSpacing: 1.5,
               fontFamily: "'Black Han Sans', sans-serif",
             }}
           >
             DISMISS {"\u00D7"}
           </button>
         </div>
+      ) : (
+        <button
+          onClick={() => setNarrationVisible(true)}
+          style={{
+            background: "rgba(255,215,0,.04)", borderTop: "none", borderLeft: "none", borderRight: "none",
+            borderBottom: "1px solid var(--border)", width: "100%",
+            padding: "6px 16px", cursor: "pointer",
+            fontFamily: "'Black Han Sans', sans-serif", fontSize: 11,
+            letterSpacing: 2, color: "var(--acc1)", textTransform: "uppercase",
+          }}
+          title="Tap to re-read the chapter narration"
+        >
+          Ch {chapterNum} {"\u00B7"} {chapterText.title}
+        </button>
+      ))}
+
+      {/* ── Ch1 private target hint ── */}
+      {phase === "map_ch1" && me?.targetZone && !isFacilitator && (() => {
+        const slot = slots.find((s) => s.id === me.targetZone);
+        if (!slot) return null;
+        const placed = !!me.ch1Placed;
+        return (
+          <div style={{
+            padding: "10px 16px", display: "flex", alignItems: "center", gap: 10,
+            background: placed ? "rgba(105,240,174,.08)" : "rgba(255,215,0,.08)",
+            borderBottom: `1px solid ${placed ? "rgba(105,240,174,.3)" : "rgba(255,215,0,.3)"}`,
+          }}>
+            <span style={{ fontSize: 18 }}>{placed ? "\u2705" : "\u{1F3AF}"}</span>
+            <div style={{ flex: 1 }}>
+              <div style={{
+                fontFamily: "'Black Han Sans', sans-serif", fontSize: 10,
+                letterSpacing: 2, color: placed ? "var(--acc4)" : "var(--acc1)", textTransform: "uppercase",
+              }}>
+                {placed ? "Placed \u2713" : "Your Target"}
+              </div>
+              <div style={{ fontSize: 12, color: "white" }}>
+                {placed
+                  ? `Nice work \u2014 your ${scenarioData.terminology.district} is in the right ${scenarioData.terminology.zone}.`
+                  : `Drop your ${scenarioData.terminology.district} near "${slot.label}".`}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Ch1 facilitator roster: who is placed, who isn't ── */}
+      {phase === "map_ch1" && isFacilitator && (
+        <div style={{
+          padding: "10px 16px", background: "rgba(255,255,255,.02)",
+          borderBottom: "1px solid var(--border)",
+        }}>
+          <div style={{
+            fontFamily: "'Black Han Sans', sans-serif", fontSize: 10,
+            letterSpacing: 2, color: "var(--textd)", textTransform: "uppercase", marginBottom: 6,
+          }}>
+            Placement Progress
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {nonFac.map((p) => {
+              const slot = slots.find((s) => s.id === p.targetZone);
+              const placed = !!p.ch1Placed;
+              return (
+                <div key={p._id} style={{
+                  padding: "4px 10px", borderRadius: 16, fontSize: 11,
+                  background: placed ? "rgba(105,240,174,.12)" : "rgba(255,255,255,.04)",
+                  border: `1px solid ${placed ? "rgba(105,240,174,.35)" : "var(--border)"}`,
+                  color: placed ? "var(--acc4)" : "var(--textd)",
+                }}>
+                  {p.name} {slot ? `\u2192 ${slot.label}` : ""} {placed ? "\u2713" : ""}
+                </div>
+              );
+            })}
+          </div>
+        </div>
       )}
 
-      {/* ── Ability badge + pathfinder hint ── */}
+      {/* ── Ability badge (scenario-themed) ── */}
       {myAbility && (() => {
-        const ab = ABILITIES.find((a) => a.id === myAbility);
-        if (!ab) return null;
+        const baseAbility = ABILITIES.find((a) => a.id === myAbility);
+        if (!baseAbility) return null;
+        const ab = getThemedAbility(baseAbility, scenarioData);
+        const canMend = isMender && phase === "map_ch3" && !!session?.lostConnection && !session?.menderUsed && !isFacilitator;
         return (
           <div style={{
             padding: "8px 16px", display: "flex", alignItems: "center", gap: 10,
@@ -386,128 +576,125 @@ export default function StoryMapScreen() {
                 Your Role: {ab.label}
               </div>
               <div style={{ fontSize: 11, color: "var(--textd)" }}>
-                {isPathfinder ? "You can see zone labels. Help your team place districts." : ab.description}
+                {ab.description}
               </div>
             </div>
+            {canMend && (
+              <button
+                className="lb lb-green"
+                style={{ fontSize: 10, padding: "8px 12px", whiteSpace: "nowrap" }}
+                onClick={handleRepairConnection}
+              >
+                REPAIR LOST LINK
+              </button>
+            )}
           </div>
         );
       })()}
 
       {/* ── Map area ── */}
-      <div ref={mapRef} className="map-area" style={{ flex: 1, minHeight: 320, position: "relative" }}>
-        <MapBg slots={slots} occupiedSlotIds={occupiedSlotIds} rebuilt={patternComplete} />
+      <div
+        ref={mapRef}
+        className="map-area"
+        style={{
+          flex: 1,
+          // Scale to ~60% of viewport height on phones and up to ~560px on
+          // desktop so the map actually dominates the screen instead of being
+          // crushed by the chrome above/below.
+          minHeight: "min(60vh, 560px)",
+          position: "relative",
+        }}
+      >
+        <ThemedMap theme={mapTheme} phase={phase as "map_ch1" | "map_ch2" | "map_ch3"} patternComplete={mapRebuilt} />
 
-        {/* Placement slots */}
-        {slots.map((slot) => {
-          const occupied = occupiedSlotIds.has(slot.id);
+        {/* Zone name overlay — soft orientation labels over the map art.
+            Free movement means these aren't placement targets, just nice
+            shared vocabulary for the team to talk about where to drop. */}
+        {phase === "map_ch1" && slots.map((slot) => (
+          <div
+            key={slot.id}
+            style={{
+              position: "absolute",
+              left: slot.x + "%",
+              top: slot.y + "%",
+              transform: "translate(-50%, -50%)",
+              fontFamily: "'Black Han Sans', sans-serif",
+              fontSize: 9,
+              letterSpacing: 1,
+              textTransform: "uppercase",
+              color: "rgba(255,255,255,.6)",
+              textShadow: "0 1px 3px rgba(0,0,0,.9)",
+              pointerEvents: "none",
+              zIndex: 3,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {slot.label}
+          </div>
+        ))}
+
+        {/* Connection lines + LEGO bridge thumbnails */}
+        <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", zIndex: 5 }}>
+          {(phase === "map_ch2" || phase === "map_ch3") && (connections ?? []).map((conn) => {
+            const a = nonFac.find((p) => p._id === conn.fromSlotId);
+            const b = nonFac.find((p) => p._id === conn.toSlotId);
+            if (!a || !b) return null;
+            const ax = a.x ?? 50, ay = a.y ?? 50;
+            const bx = b.x ?? 50, by = b.y ?? 50;
+            return (
+              <line
+                key={conn._id}
+                x1={ax + "%"} y1={ay + "%"}
+                x2={bx + "%"} y2={by + "%"}
+                stroke="rgba(255,215,0,.65)" strokeWidth={3}
+              />
+            );
+          })}
+        </svg>
+
+        {/* Bridge thumbnails at the midpoint of each connection. Kept outside
+            the SVG so we can use real <img> tags for the JPEG preview. */}
+        {(phase === "map_ch2" || phase === "map_ch3") && (connections ?? []).map((conn) => {
+          if (!conn.photoDataUrl) return null;
+          const a = nonFac.find((p) => p._id === conn.fromSlotId);
+          const b = nonFac.find((p) => p._id === conn.toSlotId);
+          if (!a || !b) return null;
+          const ax = a.x ?? 50, ay = a.y ?? 50;
+          const bx = b.x ?? 50, by = b.y ?? 50;
+          const mx = (ax + bx) / 2;
+          const my = (ay + by) / 2;
           return (
             <div
-              key={slot.id}
-              className="slot-indicator"
+              key={`bridge-${conn._id}`}
               style={{
-                left: slot.x + "%",
-                top: slot.y + "%",
-                opacity: occupied ? 0 : 1,
-                transition: "opacity .3s",
+                position: "absolute",
+                left: mx + "%",
+                top: my + "%",
+                transform: "translate(-50%, -50%)",
+                width: 36, height: 36,
+                borderRadius: "50%",
+                overflow: "hidden",
+                border: "2px solid var(--acc1)",
+                boxShadow: "0 2px 8px rgba(0,0,0,.5)",
+                zIndex: 6,
+                pointerEvents: "none",
               }}
             >
-              {isPathfinder && <div className="slot-label">{slot.label}</div>}
+              <img src={conn.photoDataUrl} alt="LEGO bridge" style={{ width: "100%", height: "100%", objectFit: "cover" }} draggable={false} />
             </div>
           );
         })}
 
-        {/* Connection lines */}
-        <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", zIndex: 5 }}>
-          {/* Ch1: faint hint lines between occupied adjacent zones */}
-          {phase === "map_ch1" && placed.map((a, i) =>
-            placed.slice(i + 1).map((b) => {
-              if (!a.slotId || !b.slotId) return null;
-              const slotA = slots.find((s) => s.id === a.slotId);
-              const slotB = slots.find((s) => s.id === b.slotId);
-              if (!slotA || !slotB || !slotA.adjacent.includes(b.slotId)) return null;
-              return (
-                <line
-                  key={`hint-${a._id}-${b._id}`}
-                  x1={slotA.x + "%"} y1={slotA.y + "%"}
-                  x2={slotB.x + "%"} y2={slotB.y + "%"}
-                  stroke="rgba(105,240,174,.15)" strokeWidth="1" strokeDasharray="4 4"
-                />
-              );
-            })
-          )}
-
-          {/* Ch2/Ch3: real connections saved to Convex */}
-          {(phase === "map_ch2" || phase === "map_ch3") && (connections ?? []).map((conn) => {
-            const sA = slots.find((s) => s.id === conn.fromSlotId);
-            const sB = slots.find((s) => s.id === conn.toSlotId);
-            if (!sA || !sB) return null;
-            const a = conn.fromSlotId, b = conn.toSlotId;
-            const key = a < b ? `${a}|${b}` : `${b}|${a}`;
-            const inPattern = isCh3 && patternRevealed && requiredSet.has(key);
-            const isExtra = isCh3 && patternRevealed && !requiredSet.has(key);
-            const stroke = inPattern ? "rgba(105,240,174,.85)" : isExtra ? "rgba(244,67,54,.7)" : "rgba(255,215,0,.65)";
-            return (
-              <line
-                key={conn._id}
-                x1={sA.x + "%"} y1={sA.y + "%"}
-                x2={sB.x + "%"} y2={sB.y + "%"}
-                stroke={stroke} strokeWidth={inPattern ? 4 : 3}
-              />
-            );
-          })}
-
-          {/* Ch3: reveal missing pattern lines as faint guides */}
-          {isCh3 && patternRevealed && requiredPairs.map((key) => {
-            if (builtSet.has(key)) return null;
-            const [a, b] = key.split("|");
-            const sA = slots.find((s) => s.id === a);
-            const sB = slots.find((s) => s.id === b);
-            if (!sA || !sB) return null;
-            return (
-              <line
-                key={`miss-${key}`}
-                x1={sA.x + "%"} y1={sA.y + "%"}
-                x2={sB.x + "%"} y2={sB.y + "%"}
-                stroke="rgba(255,215,0,.35)" strokeWidth="2" strokeDasharray="6 6"
-              />
-            );
-          })}
-
-          {/* Ch2: pending-connection preview from selected slot to mouse/candidate */}
-          {isCh2 && selectedForConnection && (() => {
-            const from = slots.find((s) => s.id === selectedForConnection);
-            if (!from) return null;
-            return from.adjacent.map((adjId) => {
-              const to = slots.find((s) => s.id === adjId);
-              if (!to) return null;
-              if (!occupiedSlotIds.has(adjId)) return null;
-              const already = (connections ?? []).some(
-                (c) =>
-                  (c.fromSlotId === from.id && c.toSlotId === adjId) ||
-                  (c.fromSlotId === adjId && c.toSlotId === from.id)
-              );
-              if (already) return null;
-              return (
-                <line
-                  key={`pending-${from.id}-${adjId}`}
-                  x1={from.x + "%"} y1={from.y + "%"}
-                  x2={to.x + "%"} y2={to.y + "%"}
-                  stroke="rgba(79,195,247,.7)" strokeWidth="2" strokeDasharray="6 4"
-                />
-              );
-            });
-          })()}
-        </svg>
-
-        {/* Placed districts */}
+        {/* Placed districts — free positioning from player's stored x/y */}
         {placed.map((p) => {
           const isMe = p._id === playerId;
           const isDragging = dragPos?.id === p._id;
-          const slotData = p.slotId ? slots.find((s) => s.id === p.slotId) : null;
-          const pctX = isDragging ? dragPos.x : (slotData ? slotData.x : (p.x ?? 50));
-          const pctY = isDragging ? dragPos.y : (slotData ? slotData.y : (p.y ?? 50));
-          const isSelectedForConn = (isCh2 || isCh3) && p.slotId === selectedForConnection;
-          const connectionCount = (connections ?? []).filter((c) => c.fromSlotId === p.slotId || c.toSlotId === p.slotId).length;
+          const pctX = isDragging ? dragPos.x : (p.x ?? 50);
+          const pctY = isDragging ? dragPos.y : (p.y ?? 50);
+          const isSelectedForConn = (isCh2 || isCh3) && p._id === selectedForConnection;
+          const connectionCount = (connections ?? []).filter(
+            (c) => c.fromSlotId === p._id || c.toSlotId === p._id
+          ).length;
 
           return (
             <div
@@ -523,7 +710,7 @@ export default function StoryMapScreen() {
               }}
               onMouseDown={(e) => { if (phase === "map_ch1") startDrag(e, p._id); }}
               onTouchStart={(e) => { if (phase === "map_ch1") startDrag(e, p._id); }}
-              onClick={() => { if ((isCh2 || isCh3) && p.slotId) handleDistrictTap(p.slotId); }}
+              onClick={() => { if (isCh2 || isCh3) handleDistrictTap(p._id); }}
             >
               <div style={{ pointerEvents: "none" }}>
                 {p.photoDataUrl ? (
@@ -536,7 +723,6 @@ export default function StoryMapScreen() {
                   {isMe ? "YOU" : p.name}
                 </div>
               </div>
-              {/* Connection-count badge (Ch2+) */}
               {(isCh2 || phase === "map_ch3") && connectionCount > 0 && (
                 <div style={{
                   position: "absolute", top: -8, right: -8,
@@ -567,7 +753,7 @@ export default function StoryMapScreen() {
             marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center",
           }}>
             <span>Unplaced {scenarioData.terminology.district}s ({unplaced.length})</span>
-            {me && !me.slotId && (
+            {me && me.x === undefined && (
               <span style={{ color: "var(--acc1)" }}>
                 Drag yours onto the {scenarioData.terminology.map}
               </span>
@@ -617,8 +803,8 @@ export default function StoryMapScreen() {
         </div>
       )}
 
-      {/* ── Ch2: Crisis card reveal banner ── */}
-      {isCh2 && activeCrisis && !crisisBannerDismissed && (
+      {/* ── Ch2: Crisis card reveal banner. Visible until facilitator clears it. ── */}
+      {isCh2 && activeCrisis && (
         <div style={{
           padding: "14px 16px",
           borderTop: "1px solid var(--border)",
@@ -647,16 +833,21 @@ export default function StoryMapScreen() {
               Counter: {activeCrisis.counterplay}
             </div>
           </div>
-          <button
-            onClick={() => setCrisisBannerDismissed(true)}
-            style={{
-              background: "none", border: "none", color: "var(--textd)", cursor: "pointer",
-              fontSize: 11, letterSpacing: 1.5, fontFamily: "'Black Han Sans', sans-serif",
-              alignSelf: "flex-start",
-            }}
-          >
-            DISMISS {"\u00D7"}
-          </button>
+          {isFacilitator && (
+            <button
+              onClick={handleClearCrisis}
+              style={{
+                background: "rgba(0,0,0,.35)", border: "1px solid var(--border)",
+                color: "var(--textd)", cursor: "pointer",
+                fontSize: 10, letterSpacing: 1.5, fontFamily: "'Black Han Sans', sans-serif",
+                padding: "6px 10px", borderRadius: 6,
+                alignSelf: "flex-start",
+              }}
+              title="Clear the crisis banner for the whole session"
+            >
+              CLEAR
+            </button>
+          )}
         </div>
       )}
 
@@ -694,8 +885,8 @@ export default function StoryMapScreen() {
         </div>
       )}
 
-      {/* ── Instruction hint — only when there's something to do ── */}
-      {isCh2 && !isFacilitator && (
+      {/* ── Instruction hint for Ch2/Ch3 connection flow ── */}
+      {(isCh2 || isCh3) && !isFacilitator && !mapRebuilt && (
         <div style={{
           padding: "8px 16px",
           borderTop: "1px solid var(--border)",
@@ -703,70 +894,45 @@ export default function StoryMapScreen() {
           background: "rgba(255,255,255,.02)",
         }}>
           {selectedForConnection
-            ? `Tap an adjacent district to build a connection, or tap the same one again to cancel.`
-            : `Tap two adjacent districts to build a connection.`}
+            ? `Tap a second district to bridge them. Tap the same one again to cancel.`
+            : `Build a LEGO bridge between two districts. Tap one, then the other — the camera opens so you can photograph your bridge.`}
         </div>
       )}
 
-      {/* ── Ch3: Pattern reveal banner + progress ── */}
-      {isCh3 && patternRevealed && (
+      {/* ── Ch3: Rally banner. Simple framing — no hidden pattern mechanic. ── */}
+      {isCh3 && !mapRebuilt && (
         <div style={{
-          padding: "14px 16px",
+          padding: "12px 16px",
           borderTop: "1px solid var(--border)",
-          background: patternComplete
-            ? "linear-gradient(180deg, rgba(105,240,174,.18), rgba(105,240,174,.04))"
-            : "linear-gradient(180deg, rgba(255,215,0,.12), rgba(255,215,0,.03))",
+          background: "linear-gradient(180deg, rgba(255,215,0,.12), rgba(255,215,0,.03))",
           display: "flex", alignItems: "center", gap: 12,
         }}>
-          <div style={{ fontSize: 30 }}>{patternComplete ? "\u2728" : "\u{1F50D}"}</div>
+          <div style={{ fontSize: 26 }}>{"\u{1F6E0}\uFE0F"}</div>
           <div style={{ flex: 1 }}>
             <div style={{
               fontFamily: "'Black Han Sans', sans-serif", fontSize: 10, letterSpacing: 2,
-              color: patternComplete ? "var(--acc4)" : "var(--acc1)", textTransform: "uppercase",
+              color: "var(--acc1)", textTransform: "uppercase",
             }}>
-              HIDDEN PATTERN
-            </div>
-            <div style={{
-              fontFamily: "'Black Han Sans', sans-serif", fontSize: 18, letterSpacing: 1.5,
-              color: "white", marginTop: 2,
-            }}>
-              {pattern.label}
+              Chapter 3 {"\u00B7"} Rally
             </div>
             <div style={{ fontSize: 12, color: "var(--textd)", marginTop: 4, lineHeight: 1.5 }}>
-              {pattern.description}
-            </div>
-            <div style={{ fontSize: 11, color: patternComplete ? "var(--acc4)" : "var(--acc1)", marginTop: 6, fontWeight: 900, letterSpacing: 1 }}>
-              {patternComplete
-                ? `\u2713 PATTERN COMPLETE \u2014 The ${scenarioData.terminology.map} is rebuilt`
-                : `${matched.length} / ${requiredSet.size} matching connections${extras.length > 0 ? ` \u00B7 ${extras.length} extra to remove` : ""}`}
+              Rebuild the connections your team lost. Talk it out, decide together what the {scenarioData.terminology.map} needs. The facilitator marks it rebuilt when the group is ready.
             </div>
           </div>
         </div>
       )}
 
-      {/* ── Ch3: Not yet revealed — tell players to wait ── */}
-      {isCh3 && !patternRevealed && !isFacilitator && (
+      {/* ── Ch3 complete — celebration strip ── */}
+      {isCh3 && mapRebuilt && (
         <div style={{
           padding: "12px 16px",
           borderTop: "1px solid var(--border)",
-          background: "rgba(255,215,0,.06)",
+          background: "linear-gradient(180deg, rgba(105,240,174,.18), rgba(105,240,174,.04))",
           textAlign: "center",
-          fontSize: 12, color: "var(--textd)",
+          fontSize: 13, color: "var(--acc4)", fontWeight: 900, letterSpacing: 1,
+          fontFamily: "'Black Han Sans', sans-serif",
         }}>
-          {"\u{1F510}"} A hidden pattern is coming. Waiting for the facilitator to reveal it.
-        </div>
-      )}
-
-      {isCh3 && !isFacilitator && patternRevealed && !patternComplete && (
-        <div style={{
-          padding: "8px 16px",
-          borderTop: "1px solid var(--border)",
-          fontSize: 11, color: "var(--textd)", textAlign: "center",
-          background: "rgba(255,255,255,.02)",
-        }}>
-          {selectedForConnection
-            ? "Tap an adjacent district to add a connection, or tap an existing one to remove it."
-            : "Rearrange connections to match the pattern. Extras in red, missing as dashed gold."}
+          {"\u2728"} The {scenarioData.terminology.map} stands reborn {"\u2728"}
         </div>
       )}
 
@@ -780,8 +946,7 @@ export default function StoryMapScreen() {
         <div style={{ fontSize: 12, color: "var(--textd)" }}>
           {phase === "map_ch1" && `${placed.length}/${nonFac.length} placed`}
           {isCh2 && `${(connections ?? []).length} connection${(connections ?? []).length !== 1 ? "s" : ""} built`}
-          {isCh3 && patternRevealed && `${matched.length}/${requiredSet.size} matched${extras.length ? ` \u00B7 ${extras.length} extra` : ""}`}
-          {isCh3 && !patternRevealed && `${(connections ?? []).length} connections \u00B7 pattern sealed`}
+          {isCh3 && `${(connections ?? []).length} connection${(connections ?? []).length !== 1 ? "s" : ""} on the map`}
         </div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
           {isFacilitator && isCh2 && (
@@ -805,17 +970,19 @@ export default function StoryMapScreen() {
               </button>
             </>
           )}
-          {isFacilitator && isCh3 && !patternRevealed && (
+          {isFacilitator && isCh3 && !mapRebuilt && (
             <button
               className="lb lb-yellow"
               style={{ fontSize: 10, padding: "7px 11px" }}
               onClick={async () => {
                 if (!sessionId) return;
                 await revealPattern({ sessionId });
-                toast(`Pattern revealed: ${pattern.label}`);
+                playSound("map-rebuilt");
+                toast(`The ${scenarioData.terminology.map} is rebuilt`);
               }}
+              title="Crossfade the map to its rebuilt state"
             >
-              REVEAL PATTERN
+              MAP REBUILT {"\u2192"}
             </button>
           )}
           {isFacilitator ? (
@@ -830,7 +997,7 @@ export default function StoryMapScreen() {
             <div style={{ fontSize: 11, color: "var(--textd)" }}>
               {phase === "map_ch1" && (allPlaced ? "All placed. Waiting for facilitator." : "Place your district.")}
               {isCh2 && "Build connections. Waiting for facilitator."}
-              {isCh3 && patternComplete && `${scenarioData.terminology.map} reborn \u2014 waiting to vote`}
+              {isCh3 && mapRebuilt && `${scenarioData.terminology.map} reborn \u2014 waiting to vote`}
             </div>
           )}
         </div>
@@ -973,6 +1140,76 @@ export default function StoryMapScreen() {
                   USE NOW
                 </button>
               </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Connection camera modal ── */}
+      {pendingConnectionPair && (() => {
+        const a = nonFac.find((p) => p._id === pendingConnectionPair.fromId);
+        const b = nonFac.find((p) => p._id === pendingConnectionPair.toId);
+        return (
+          <div className="card-modal-overlay" onClick={cancelConnection}>
+            <div className="card-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
+              <div className="card-modal-body" style={{ padding: 16 }}>
+                <div className="card-modal-title">Photograph the LEGO Bridge</div>
+                <div style={{ fontSize: 12, color: "var(--textd)", margin: "6px 0 12px", textAlign: "center" }}>
+                  {a?.districtName || a?.name || "District A"} {"\u2194"} {b?.districtName || b?.name || "District B"}
+                </div>
+                {connectionCameraActive && (
+                  <div className="cam-area" style={{ marginBottom: 10 }}>
+                    <video ref={connectionVideoRef} className="cam-video" autoPlay playsInline muted />
+                  </div>
+                )}
+                {connectionPhoto && (
+                  <div className="prev-area" style={{ marginBottom: 10 }}>
+                    <img src={connectionPhoto} alt="LEGO bridge preview" className="prev-img" />
+                  </div>
+                )}
+                <canvas ref={connectionCanvasRef} style={{ display: "none" }} />
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {connectionCameraActive && !connectionPhoto && (
+                    <button className="lb lb-yellow" style={{ flex: 1 }} onClick={captureConnectionPhoto}>
+                      CAPTURE
+                    </button>
+                  )}
+                  {connectionPhoto && (
+                    <>
+                      <button
+                        className="lb lb-ghost"
+                        style={{ flex: 1 }}
+                        onClick={() => { setConnectionPhoto(null); startConnectionCamera(); }}
+                      >
+                        RETAKE
+                      </button>
+                      <button
+                        className="lb lb-green"
+                        style={{ flex: 1 }}
+                        disabled={connectionUploading}
+                        onClick={submitConnection}
+                      >
+                        {connectionUploading ? "SAVING\u2026" : "USE THIS"}
+                      </button>
+                    </>
+                  )}
+                  {!connectionCameraActive && !connectionPhoto && (
+                    <>
+                      <button className="lb lb-yellow" style={{ flex: 1 }} onClick={startConnectionCamera}>
+                        OPEN CAMERA
+                      </button>
+                      <button
+                        className="lb lb-ghost"
+                        style={{ flex: 1, fontSize: 11 }}
+                        onClick={handleConnectionUploadFallback}
+                      >
+                        UPLOAD PHOTO
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+              <button className="card-modal-close" onClick={cancelConnection}>CANCEL</button>
             </div>
           </div>
         );

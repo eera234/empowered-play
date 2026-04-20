@@ -23,7 +23,7 @@ export default function StuckRecovery() {
 
   const collapsedStyle: React.CSSProperties = {
     position: "fixed",
-    right: 12,
+    left: 12,
     bottom: 12,
     zIndex: 9999,
     padding: "8px 12px",
@@ -58,7 +58,7 @@ export default function StuckRecovery() {
     <div
       style={{
         position: "fixed",
-        right: 12,
+        left: 12,
         bottom: 12,
         zIndex: 9999,
         width: 260,

@@ -4,17 +4,31 @@ import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { CLUE_CARDS, PAIR_BUILD_ROUNDS, SCENARIOS } from "../../lib/constants";
+import { playSound } from "../../lib/sound";
 import { toast } from "sonner";
 import { useGame } from "../GameContext";
 import BrandBar from "./BrandBar";
+import { pickPhotoFile } from "./cameraFallback";
 
 // ── Timer Display ──
 function Timer({ deadline }: { deadline: number | undefined }) {
   const [remaining, setRemaining] = useState(0);
+  // Track which second we last cued a sound for so each tick fires at most once.
+  const lastCuedRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!deadline) { setRemaining(0); return; }
-    const tick = () => setRemaining(Math.max(0, Math.ceil((deadline - Date.now()) / 1000)));
+    if (!deadline) { setRemaining(0); lastCuedRef.current = null; return; }
+    const tick = () => {
+      const next = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      setRemaining(next);
+      // Fire a warning pulse at the 10s mark, one per second for the final 5s,
+      // and a low gong at zero. The ref guard prevents re-firing on rerenders.
+      if (lastCuedRef.current !== next) {
+        lastCuedRef.current = next;
+        if (next === 10 || (next > 0 && next <= 5)) playSound("timer-warning");
+        if (next === 0) playSound("timer-expired");
+      }
+    };
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
@@ -71,6 +85,17 @@ export default function PairBuildScreen() {
   const [selectedClue, setSelectedClue] = useState<string | null>(null);
   const [expandedClue, setExpandedClue] = useState<string | null>(null);
   const [chatInput, setChatInput] = useState("");
+  // One-shot onboarding overlay. Auto-dismisses after 5 seconds so players
+  // who understand the roles don't get blocked, but explicit SKIP is also
+  // available for anyone who wants to dive in. Component state only — this
+  // shows on every mount (including rejoin) which is intentional; it's a
+  // short read and remote players may have joined after the previous round.
+  const [showIntro, setShowIntro] = useState(true);
+  useEffect(() => {
+    if (!showIntro) return;
+    const t = setTimeout(() => setShowIntro(false), 5000);
+    return () => clearTimeout(t);
+  }, [showIntro]);
 
   // Camera state
   const [cameraActive, setCameraActive] = useState(false);
@@ -164,12 +189,39 @@ export default function PairBuildScreen() {
       streamRef.current = s;
       if (videoRef.current) videoRef.current.srcObject = s;
       setCameraActive(true);
-    } catch { toast("Camera access denied."); }
+    } catch (err) {
+      // iOS Safari + many mobile browsers reject getUserMedia in non-HTTPS or
+      // in-app browser contexts. Fall back to the native file picker (which
+      // on iOS surfaces "Take Photo" anyway) so the player is never stuck.
+      const name = (err as { name?: string } | null)?.name;
+      if (name === "NotFoundError" || name === "OverconstrainedError") {
+        toast("No camera found. Tap UPLOAD PHOTO instead.");
+      } else if (name === "NotAllowedError" || name === "SecurityError") {
+        toast("Camera blocked — using photo upload instead.");
+        await handleUploadFallback();
+        return;
+      } else {
+        toast("Camera unavailable — use UPLOAD PHOTO instead.");
+      }
+      setCameraActive(false);
+    }
   }
   function stopCam() {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     setCameraActive(false);
+  }
+  async function processCapturedDataUrl(dataUrl: string) {
+    playSound("photo");
+    setPhoto(dataUrl); setLegoVerified(false);
+    if (process.env.NEXT_PUBLIC_SKIP_DETECTION) { setLegoVerified(true); return; }
+    setDetecting(true);
+    try {
+      const result = await detectBlocks({ imageBase64: dataUrl.split(",")[1] });
+      if (result.isLego) { setLegoVerified(true); playSound("lego-detected"); toast("Build detected"); }
+      else toast("No building blocks detected. Retake with your build in frame.");
+    } catch { setLegoVerified(true); toast("Could not verify. Upload allowed."); }
+    setDetecting(false);
   }
   async function capturePhoto() {
     const v = videoRef.current, c = canvasRef.current;
@@ -177,15 +229,13 @@ export default function PairBuildScreen() {
     c.width = v.videoWidth; c.height = v.videoHeight;
     c.getContext("2d")?.drawImage(v, 0, 0);
     const dataUrl = c.toDataURL("image/jpeg", 0.85);
-    setPhoto(dataUrl); stopCam(); setLegoVerified(false);
-    if (process.env.NEXT_PUBLIC_SKIP_DETECTION) { setLegoVerified(true); return; }
-    setDetecting(true);
-    try {
-      const result = await detectBlocks({ imageBase64: dataUrl.split(",")[1] });
-      if (result.isLego) { setLegoVerified(true); toast("Build detected"); }
-      else toast("No building blocks detected. Retake with your build in frame.");
-    } catch { setLegoVerified(true); toast("Could not verify. Upload allowed."); }
-    setDetecting(false);
+    stopCam();
+    await processCapturedDataUrl(dataUrl);
+  }
+  async function handleUploadFallback() {
+    const dataUrl = await pickPhotoFile();
+    if (!dataUrl) return;
+    await processCapturedDataUrl(dataUrl);
   }
   async function submitPhoto() {
     if (!sessionId || !playerId || !photo) return;
@@ -199,14 +249,22 @@ export default function PairBuildScreen() {
     if (!sessionId || !me || !architectFor || !selectedClue) return;
     const result = await selectClue({ sessionId, architectId: me._id, builderId: architectFor._id, clueCardId: selectedClue, round: currentRound });
     if (result?.success === false) toast(result.error || "Could not send clue");
-    else { toast("Clue sent!"); setSelectedClue(null); }
+    else { playSound("clue-sent"); toast("Clue sent!"); setSelectedClue(null); }
   }
 
   // ── Chat ──
   async function handleSendChat(pairKey: string) {
     if (!sessionId || !me || !chatInput.trim()) return;
-    await sendPairMessage({ sessionId, pairKey, senderId: me._id, text: chatInput.trim() });
+    const text = chatInput.trim();
     setChatInput("");
+    try {
+      await sendPairMessage({ sessionId, pairKey, senderId: me._id, text });
+    } catch (err) {
+      // Restore the draft so the player can retry without re-typing.
+      setChatInput(text);
+      const msg = (err as { message?: string } | null)?.message || "";
+      toast(msg.includes("Empty") ? "Type something first." : "Message failed. Check your connection and retry.");
+    }
   }
 
   const activePairKey = tab === "architect" ? pairKeyAsArchitect : pairKeyAsBuilder;
@@ -361,6 +419,62 @@ export default function PairBuildScreen() {
     <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", background: "var(--bg0)", color: "white" }}>
       <BrandBar />
       <canvas ref={canvasRef} style={{ display: "none" }} />
+
+      {/* ── Architect/Builder onboarding overlay (auto-dismisses after 5s) ── */}
+      {showIntro && role === "player" && (
+        <div
+          onClick={() => setShowIntro(false)}
+          style={{
+            position: "fixed", inset: 0, background: "rgba(6,6,26,.94)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            padding: 24, zIndex: 500, cursor: "pointer",
+            animation: "fadeIn .3s ease-out",
+          }}
+        >
+          <div style={{ maxWidth: 420, width: "100%", textAlign: "center" }}>
+            <div style={{
+              fontFamily: "'Black Han Sans', sans-serif", fontSize: 20, letterSpacing: 2,
+              color: "var(--acc1)", marginBottom: 20,
+            }}>
+              PAIR BUILD
+            </div>
+            <div style={{
+              background: "rgba(255,215,0,.08)", border: "1px solid rgba(255,215,0,.3)",
+              borderRadius: "var(--brick-radius)", padding: "14px 16px", marginBottom: 12, textAlign: "left",
+            }}>
+              <div style={{ fontSize: 11, color: "var(--acc1)", fontWeight: 900, letterSpacing: 2, marginBottom: 6 }}>
+                {"\u{1F3A8}"} YOU ARE THE ARCHITECT
+              </div>
+              <div style={{ fontSize: 13, color: "white", lineHeight: 1.5 }}>
+                You know what&apos;s being built. Send clue cards and chat so your builder can
+                recreate it without ever seeing the answer.
+              </div>
+            </div>
+            <div style={{
+              background: "rgba(79,195,247,.08)", border: "1px solid rgba(79,195,247,.3)",
+              borderRadius: "var(--brick-radius)", padding: "14px 16px", marginBottom: 16, textAlign: "left",
+            }}>
+              <div style={{ fontSize: 11, color: "var(--acc2)", fontWeight: 900, letterSpacing: 2, marginBottom: 6 }}>
+                {"\u{1F9F1}"} YOU ARE THE BUILDER
+              </div>
+              <div style={{ fontSize: 13, color: "white", lineHeight: 1.5 }}>
+                Someone else is guiding you. Read their clues, ask anything in chat, then build with LEGO
+                and photograph each round when the timer runs.
+              </div>
+            </div>
+            <div style={{ fontSize: 11, color: "var(--textd)", marginBottom: 12 }}>
+              Most rounds you play both roles &mdash; one for your pair, one for someone else&apos;s.
+            </div>
+            <button
+              className="lb lb-yellow"
+              onClick={(e) => { e.stopPropagation(); setShowIntro(false); }}
+              style={{ padding: "10px 32px", fontSize: 13 }}
+            >
+              GOT IT {"\u2192"}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Clue detail modal (animated like card modal) ── */}
       {expandedClueData && (
@@ -696,6 +810,9 @@ export default function PairBuildScreen() {
                 <div style={{ fontSize: 11, color: "var(--textd)", lineHeight: 1.6 }}>
                   You can&apos;t build yet. Once every architect sends their clue (or the clue timer runs out), the build stage starts.
                 </div>
+                <div style={{ fontSize: 10, color: "var(--acc2)", marginTop: 8, fontStyle: "italic" }}>
+                  {"\u{1F4AC}"} Chat with your architect is open the whole round {"\u2014"} scroll down.
+                </div>
               </div>
             )}
 
@@ -768,13 +885,22 @@ export default function PairBuildScreen() {
               </div>
 
               {!cameraActive && !photo && !hasPhotoThisRound && (
-                <button
-                  className="lb lb-red"
-                  style={{ width: "100%", fontSize: 13, padding: "14px 0" }}
-                  onClick={startCam}
-                >
-                  {"\u{1F4F7}"} OPEN CAMERA
-                </button>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <button
+                    className="lb lb-red"
+                    style={{ width: "100%", fontSize: 13, padding: "14px 0" }}
+                    onClick={startCam}
+                  >
+                    {"\u{1F4F7}"} OPEN CAMERA
+                  </button>
+                  <button
+                    className="lb lb-ghost"
+                    style={{ width: "100%", fontSize: 11, padding: "10px 0" }}
+                    onClick={handleUploadFallback}
+                  >
+                    UPLOAD PHOTO INSTEAD
+                  </button>
+                </div>
               )}
 
               {cameraActive && (

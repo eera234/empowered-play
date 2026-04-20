@@ -512,6 +512,32 @@ html,body{width:100%;min-height:100vh;font-family:'Nunito',sans-serif;overflow-x
 .comp-note-text{font-size:13px;color:var(--textd);line-height:1.8}
 .comp-note-text strong{color:var(--text)}
 
+/* Debrief Summary on CompleteScreen — vote bar charts + reflection answers */
+.comp-summary{width:100%;max-width:640px;display:flex;flex-direction:column;gap:22px;margin-top:14px}
+.comp-summary-section{background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:var(--brick-radius);padding:16px 18px}
+.comp-summary-heading{font-family:'Black Han Sans',sans-serif;font-size:12px;letter-spacing:3px;color:var(--acc1);margin-bottom:12px;text-align:left}
+.comp-vote-block{padding:10px 0;border-top:1px dashed var(--border)}
+.comp-vote-block:first-child{border-top:none;padding-top:0}
+.comp-vote-header{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.comp-vote-icon{font-size:20px}
+.comp-vote-title{font-family:'Black Han Sans',sans-serif;font-size:12px;letter-spacing:1.5px;color:white}
+.comp-vote-q{font-size:10px;color:var(--textd);margin-top:2px}
+.comp-vote-empty{font-size:11px;color:var(--textdd);font-style:italic;padding:6px 0}
+.comp-vote-rows{display:flex;flex-direction:column;gap:4px}
+.comp-vote-row{display:grid;grid-template-columns:100px 1fr 30px;align-items:center;gap:10px;font-size:12px}
+.comp-vote-name{color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.comp-vote-bar-wrap{background:rgba(255,255,255,.06);border-radius:3px;height:10px;overflow:hidden}
+.comp-vote-bar{height:100%;background:linear-gradient(90deg,rgba(255,215,0,.5),rgba(255,215,0,.85));border-radius:3px;transition:width .6s ease-out}
+.comp-vote-count{text-align:right;font-weight:900;color:var(--textd);font-size:11px}
+.comp-answer-group{padding:10px 0;border-top:1px dashed var(--border)}
+.comp-answer-group:first-child{border-top:none;padding-top:0}
+.comp-answer-prompt{font-size:13px;color:white;font-weight:700;line-height:1.4;margin-bottom:10px}
+.comp-answer-empty{font-size:11px;color:var(--textdd);font-style:italic;padding:4px 0}
+.comp-answer-list{display:flex;flex-direction:column;gap:8px}
+.comp-answer-card{background:rgba(147,51,234,.06);border:1px solid rgba(147,51,234,.2);border-radius:8px;padding:10px 12px}
+.comp-answer-name{font-family:'Black Han Sans',sans-serif;font-size:10px;letter-spacing:1.5px;color:#B388FF;margin-bottom:4px}
+.comp-answer-body{font-size:12px;color:var(--text);line-height:1.55;font-style:italic}
+
 /* ══════════════════════════════
    SCENARIO PICKER
 ══════════════════════════════ */
