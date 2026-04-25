@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
+import { playSound } from "../../lib/sound";
 
 interface Props {
   sessionId: Id<"sessions">;
@@ -66,10 +67,44 @@ export default function DiplomatUnmuteOverlay({
     (p) => muteByPlayer.get(p._id as unknown as string) === true,
   ).length;
 
+  // Pass #32: success state. When the diplomat unmutes the last teammate we
+  // lock into a one-shot "TEAM RESTORED" beat, play a fanfare, and dismiss
+  // the overlay 1500ms later instead of letting it sit through the rest of
+  // the 15s timer. sawMutedRef guards against the page-refresh case where the
+  // game is already over and we'd otherwise re-celebrate on every reload.
+  const sawMutedRef = useRef(false);
+  const succeededRef = useRef(false);
+  const [succeeded, setSucceeded] = useState(false);
+
+  useEffect(() => {
+    if (mutedCount > 0) sawMutedRef.current = true;
+  }, [mutedCount]);
+
+  useEffect(() => {
+    if (succeededRef.current) return;
+    if (!sawMutedRef.current) return;
+    if (muteState === undefined) return;
+    if (mutedCount !== 0) return;
+    succeededRef.current = true;
+    setSucceeded(true);
+    playSound("complete-fanfare");
+    const t = window.setTimeout(() => onDone?.(), 1500);
+    return () => window.clearTimeout(t);
+  }, [mutedCount, muteState, onDone]);
+
+  // Reset the success lock when a new crisis starts (the parent keeps this
+  // component mounted across both crises if neither dismisses).
+  useEffect(() => {
+    succeededRef.current = false;
+    sawMutedRef.current = false;
+    setSucceeded(false);
+  }, [startedAt]);
+
   useEffect(() => {
     if (remaining <= 0 && onDone) onDone();
   }, [remaining, onDone]);
 
+  if (succeeded) return <DiplomatSuccessCard teammateCount={teammates.length} />;
   if (remaining <= 0) return null;
 
   return (
@@ -195,6 +230,77 @@ export default function DiplomatUnmuteOverlay({
               transition: "width 200ms linear",
             }}
           />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Pass #32: shown for ~1.5s after the diplomat unmutes the last teammate.
+// Reuses ch1CelebrateHalo from globals.css for the green halo bloom and
+// pulse for the checkmark glow. Visual palette borrows from
+// ProtectionBanner.tsx so the success reads as part of the same family.
+function DiplomatSuccessCard({ teammateCount }: { teammateCount: number }) {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 80,
+        background: "rgba(0,0,0,.78)",
+        backdropFilter: "blur(6px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+      }}
+    >
+      <div
+        className="diplomat-success-bloom"
+        style={{
+          width: "100%",
+          maxWidth: 420,
+          background: "linear-gradient(180deg, rgba(24,34,14,.96), rgba(10,14,6,.96))",
+          border: "2px solid rgba(144,238,144,.55)",
+          borderRadius: 16,
+          padding: "26px 22px 22px",
+          boxShadow: "0 18px 50px rgba(0,0,0,.6)",
+          textAlign: "center",
+          animation: "ch1CelebrateHalo 1600ms ease-out 1",
+        }}
+      >
+        <div
+          style={{
+            fontFamily: "'Black Han Sans', sans-serif",
+            fontSize: 22,
+            letterSpacing: 3,
+            color: "#A6E89B",
+          }}
+        >
+          TEAM RESTORED
+        </div>
+        <div
+          style={{
+            fontSize: 13,
+            color: "rgba(220,240,210,.92)",
+            lineHeight: 1.5,
+            marginTop: 8,
+          }}
+        >
+          All {teammateCount} {teammateCount === 1 ? "voice is" : "voices are"} back online.
+        </div>
+        <div
+          aria-hidden
+          style={{
+            marginTop: 18,
+            fontSize: 56,
+            color: "#A6E89B",
+            lineHeight: 1,
+            animation: "pulse 1200ms ease-in-out infinite",
+            textShadow: "0 0 24px rgba(105,240,174,.55)",
+          }}
+        >
+          {"✓"}
         </div>
       </div>
     </div>

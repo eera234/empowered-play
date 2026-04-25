@@ -378,6 +378,20 @@ export default function StoryMapScreen() {
   // Pass #14: hit animation when damageResolved flips to true.
   const [crisisHitShake, setCrisisHitShake] = useState(false);
   const prevDamageResolvedRef = useRef<boolean | undefined>(undefined);
+
+  // Pass #32: local lifecycle for the Diplomat unmute overlay. The server's
+  // diplomatUnmuteDone used to control mount/unmount directly, which killed
+  // the success animation the moment the diplomat tapped the last teammate.
+  // Now the overlay owns dismissal via onDone, and we reset on a fresh start.
+  const [diplomatDismissed, setDiplomatDismissed] = useState(false);
+  const lastDiplomatStartRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    const startedAt = session?.diplomatUnmuteStartedAt;
+    if (startedAt && startedAt !== lastDiplomatStartRef.current) {
+      lastDiplomatStartRef.current = startedAt;
+      setDiplomatDismissed(false);
+    }
+  }, [session?.diplomatUnmuteStartedAt]);
   useEffect(() => {
     const curr = session?.damageResolved;
     if (prevDamageResolvedRef.current === false && curr === true) {
@@ -811,11 +825,14 @@ export default function StoryMapScreen() {
 
       {/* ═══ Pass #18: Diplomat chat-unmute mini-game ═══
           Shown only to the player whose role is Diplomat while the server's
-          Diplomat timer is running. Tapping a muted teammate unmutes them. */}
+          Diplomat timer is running. Tapping a muted teammate unmutes them.
+          Pass #32: dismissal driven by onDone (success or timeout) instead of
+          server's diplomatUnmuteDone, so the success animation has time to
+          play before un-mount. */}
       {phase === "map_ch2" && !isFacilitator && myAbility === "diplomat"
         && sessionId && playerId
         && session?.diplomatUnmuteStartedAt
-        && !session?.diplomatUnmuteDone && (
+        && !diplomatDismissed && (
         <DiplomatUnmuteOverlay
           sessionId={sessionId}
           diplomatId={playerId}
@@ -824,6 +841,7 @@ export default function StoryMapScreen() {
           players={(players ?? [])
             .filter((p) => !p.isFacilitator)
             .map((p) => ({ _id: p._id, name: p.name, ability: p.ability }))}
+          onDone={() => setDiplomatDismissed(true)}
         />
       )}
 
