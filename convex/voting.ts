@@ -2,7 +2,7 @@ import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
 // ══════════════════════════════
-//  GUESS + VOTE PHASE — Queries
+//  GUESS + VOTE PHASE : Queries
 // ══════════════════════════════
 
 export const getGuesses = query({
@@ -50,7 +50,7 @@ export const getVotesByCategory = query({
 });
 
 // ══════════════════════════════
-//  GUESS PHASE — Mutations
+//  GUESS PHASE : Mutations
 // ══════════════════════════════
 
 // Submit a guess: player assigns a district name to an anonymous build photo
@@ -89,7 +89,7 @@ export const submitGuess = mutation({
 });
 
 // ══════════════════════════════
-//  VOTE PHASE — Mutations
+//  VOTE PHASE : Mutations
 // ══════════════════════════════
 
 // Submit a vote in one category

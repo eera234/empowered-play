@@ -11,21 +11,12 @@ import EntryScreen from "./components/EntryScreen";
 import JoinScreen from "./components/JoinScreen";
 import WaitScreen from "./components/WaitScreen";
 import FacSetupScreen from "./components/FacSetupScreen";
-import FacLiveScreen from "./components/FacLiveScreen";
-import CardRevealScreen from "./components/CardRevealScreen";
-import BuildScreen from "./components/BuildScreen";
-import UploadScreen from "./components/UploadScreen";
-import CityMapScreen from "./components/CityMapScreen";
-import RevealScreen from "./components/RevealScreen";
-import DebriefScreen from "./components/DebriefScreen";
 import CompleteScreen from "./components/CompleteScreen";
-import FacDebriefScreen from "./components/FacDebriefScreen";
 // New game screens
 import PairBuildScreen from "./components/PairBuildScreen";
 import GuessScreen from "./components/GuessScreen";
 import StoryMapScreen from "./components/StoryMapScreen";
 import VoteScreen from "./components/VoteScreen";
-import ReflectionScreen from "./components/ReflectionScreen";
 import StuckRecovery from "./components/StuckRecovery";
 
 // New phase → screen mapping (used for both player and facilitator routing)
@@ -36,32 +27,19 @@ const NEW_PHASE_TO_SCREEN: Record<string, string> = {
   map_ch2: "s-map",
   map_ch3: "s-map",
   vote: "s-vote",
-  reflection: "s-reflection",
   complete: "s-complete",
 };
 
 const SCREENS: Record<string, ComponentType> = {
-  // Shared screens
   "s-entry": EntryScreen,
   "s-join": JoinScreen,
   "s-wait": WaitScreen,
   "s-complete": CompleteScreen,
-  // Old game flow screens (still active)
   "s-fac-setup": FacSetupScreen,
-  "s-fac-live": FacLiveScreen,
-  "s-fac-debrief": FacDebriefScreen,
-  "s-card": CardRevealScreen,
-  "s-build": BuildScreen,
-  "s-upload": UploadScreen,
-  "s-city": CityMapScreen,
-  "s-reveal": RevealScreen,
-  "s-debrief": DebriefScreen,
-  // New game flow screens
   "s-pair-build": PairBuildScreen,
   "s-guess": GuessScreen,
   "s-map": StoryMapScreen,
   "s-vote": VoteScreen,
-  "s-reflection": ReflectionScreen,
 };
 
 function GameShell() {
@@ -169,38 +147,16 @@ function GameShell() {
     if (session.phase === "waiting") return;
 
     if (role === "facilitator") {
-      // Old flow facilitator routing
-      if (session.phase === "debrief") {
-        goTo("s-fac-debrief");
-      } else if (session.phase === "constraint_reveal") {
-        goTo("s-reveal");
-      }
-      // New flow: facilitator sees same screens as players (with facilitator controls layered in)
-      else if (NEW_PHASE_TO_SCREEN[session.phase]) {
+      if (NEW_PHASE_TO_SCREEN[session.phase]) {
         goTo(NEW_PHASE_TO_SCREEN[session.phase]);
-      }
-      // Old flow fallback
-      else {
-        goTo("s-fac-live");
+      } else {
+        goTo("s-fac-setup");
       }
       return;
     }
 
-    // Player routing — check new phases first, then old phases
-    const phaseToScreen: Record<string, string> = {
-      // Old game flow
-      card_reveal: "s-card",
-      building: "s-build",
-      uploading: "s-upload",
-      city_map: "s-city",
-      debrief: "s-debrief",
-      constraint_reveal: "s-reveal",
-      complete: "s-complete",
-      // New game flow
-      ...NEW_PHASE_TO_SCREEN,
-    };
-    if (phaseToScreen[session.phase]) {
-      goTo(phaseToScreen[session.phase]);
+    if (NEW_PHASE_TO_SCREEN[session.phase]) {
+      goTo(NEW_PHASE_TO_SCREEN[session.phase]);
     }
   }, [session?.phase, role, goTo]);
 

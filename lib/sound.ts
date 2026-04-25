@@ -2,7 +2,7 @@
 //
 // Uses Web Audio synthesis so sounds work without any MP3 assets. If we ever
 // want richer/licensed sounds, this module is the single place to swap in
-// pre-loaded audio buffers — callers just invoke `playSound(name)` and don't
+// pre-loaded audio buffers: callers just invoke `playSound(name)` and don't
 // care about the source.
 //
 // Mute preference is persisted to localStorage under a stable key; subscribers
@@ -73,7 +73,7 @@ export function setMuted(value: boolean) {
       window.localStorage.setItem(MUTE_KEY, value ? "1" : "0");
     }
   } catch {
-    // storage unavailable — we still keep the in-memory flag
+    // storage unavailable: we still keep the in-memory flag
   }
   listeners.forEach((fn) => {
     try { fn(); } catch {}
@@ -138,7 +138,7 @@ export function playSound(name: SoundName) {
       tone(c, 784, 120, { type: "sine", gain: 0.13, delayMs: 140 });
       break;
     case "photo":
-      // Two fast square-wave clicks — a camera shutter.
+      // Two fast square-wave clicks: a camera shutter.
       tone(c, 900, 18, { type: "square", gain: 0.08, attackMs: 2, releaseMs: 30 });
       tone(c, 620, 24, { type: "square", gain: 0.08, attackMs: 2, releaseMs: 40, delayMs: 40 });
       break;
@@ -149,7 +149,7 @@ export function playSound(name: SoundName) {
       tone(c, 1047, 180, { type: "triangle", gain: 0.15, delayMs: 170, releaseMs: 220 });
       break;
     case "timer-warning":
-      // Single pulse — call multiple times for a rhythm (e.g. each second).
+      // Single pulse: call multiple times for a rhythm (e.g. each second).
       tone(c, 880, 90, { type: "sine", gain: 0.1 });
       break;
     case "timer-expired":
@@ -169,7 +169,7 @@ export function playSound(name: SoundName) {
       tone(c, 1760, 90, { type: "triangle", gain: 0.1, delayMs: 130, attackMs: 4, releaseMs: 140 });
       break;
     case "map-rebuilt":
-      // Orchestral hit ramp — major third stacked with fundamental.
+      // Orchestral hit ramp: major third stacked with fundamental.
       tone(c, 262, 220, { type: "sine", gain: 0.18, attackMs: 20, releaseMs: 260 });
       tone(c, 330, 220, { type: "sine", gain: 0.14, attackMs: 20, releaseMs: 260 });
       tone(c, 392, 300, { type: "sine", gain: 0.12, attackMs: 20, releaseMs: 320, delayMs: 60 });

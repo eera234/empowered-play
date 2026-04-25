@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { toast } from "sonner";
 import { useGame } from "../GameContext";
 import BrandBar from "./BrandBar";
-import { SCENARIOS, ABILITIES, getThemedAbility } from "../../lib/constants";
+import { SCENARIOS, ABILITIES, getThemedAbility, ROLE_COUNTS_BY_PLAYER_COUNT, MIN_PLAYERS, MAX_PLAYERS } from "../../lib/constants";
 import { SCENARIO_ILLUSTRATIONS } from "./EntryScreen";
+import AbilityBadge from "./AbilityBadge";
 
 export default function FacSetupScreen() {
   const { sessionCode, sessionId, scenario, set } = useGame();
@@ -29,16 +30,24 @@ export default function FacSetupScreen() {
   const [expandedAbility, setExpandedAbility] = useState<string | null>(null);
 
   const nonFac = (players || []).filter((p) => !p.isFacilitator);
+  // Pass #17: presence-filtered roster. Every gate ("all voted", "all seen",
+  // role-count constraint, advance readiness) runs over this list so left
+  // players never block. The full `nonFac` is still used for rendering rows
+  // (ghost rows are dimmed and tagged "left the game") and for `removePlayer`
+  // controls, since the fac may want to hard-remove someone.
+  const presentNonFac = nonFac.filter((p) => p.isPresent !== false);
 
   // Voting logic
   const voteScenarioMut = useMutation(api.game.voteScenario);
   const allPlayers = (players || []);
   const facPlayer = allPlayers.find((p) => p.isFacilitator);
   const facVote = facPlayer?.scenarioVote || null;
+  const presentAllPlayers = allPlayers.filter((p) => p.isPresent !== false);
 
-  // Count votes
+  // Count votes — only count players who are present. A player who voted and
+  // then closed the tab has their vote dropped on the next query tick.
   const voteCounts: Record<string, number> = {};
-  allPlayers.forEach((p) => { if (p.scenarioVote) voteCounts[p.scenarioVote] = (voteCounts[p.scenarioVote] || 0) + 1; });
+  presentAllPlayers.forEach((p) => { if (p.scenarioVote) voteCounts[p.scenarioVote] = (voteCounts[p.scenarioVote] || 0) + 1; });
   const totalVotes = Object.values(voteCounts).reduce((a, b) => a + b, 0);
   const maxVotes = Math.max(0, ...Object.values(voteCounts));
   const topScenarios = Object.entries(voteCounts).filter(([, count]) => count === maxVotes).map(([id]) => id);
@@ -53,26 +62,51 @@ export default function FacSetupScreen() {
     set({ scenario: winner });
   }
 
-  // Auto-assign district names to players when they join
+  // Shuffle the scenario's district names once per session so the first
+  // player to join doesn't always get index-0 (e.g., The Lighthouse). The
+  // shuffled order is frozen the first time the scenario is confirmed so
+  // that players who are already assigned keep their district when others
+  // join later. Fisher-Yates.
+  const shuffledDistrictsRef = useRef<string[] | null>(null);
+  const shuffledDistricts = useMemo(() => {
+    if (!scenarioConfirmed) return [] as string[];
+    if (shuffledDistrictsRef.current && shuffledDistrictsRef.current.length > 0) {
+      return shuffledDistrictsRef.current;
+    }
+    const base = Object.values(scenarioData.districtNames);
+    const shuffled = [...base];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    shuffledDistrictsRef.current = shuffled;
+    return shuffled;
+  }, [scenarioConfirmed, scenarioData]);
+
+  // Auto-assign district names to players when they join, drawing from the
+  // shuffled pool. Existing assignments are preserved.
   useEffect(() => {
     if (!scenarioConfirmed) return;
-    const names = scenarioData.districtNames;
+    if (shuffledDistricts.length === 0) return;
+    const taken = new Set(Object.values(districtAssignments));
+    const available = shuffledDistricts.filter((n) => !taken.has(n));
     const updated: Record<string, string> = { ...districtAssignments };
-    nonFac.forEach((p, i) => {
-      if (!updated[p._id] && names[i]) {
-        updated[p._id] = names[i];
+    let cursor = 0;
+    nonFac.forEach((p) => {
+      if (!updated[p._id] && cursor < available.length) {
+        updated[p._id] = available[cursor++];
       }
     });
     setDistrictAssignments(updated);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nonFac.length, scenarioConfirmed]);
+  }, [nonFac.length, scenarioConfirmed, shuffledDistricts]);
 
   // New flow: send all role assignments to Convex
   async function handleSendRoles() {
     if (!sessionId) return;
     for (const p of nonFac) {
       const ability = abilityAssignments[p._id] || undefined;
-      const districtName = districtAssignments[p._id] || scenarioData.districtNames[nonFac.indexOf(p)] || p.name;
+      const districtName = districtAssignments[p._id] || shuffledDistricts[nonFac.indexOf(p)] || p.name;
       await assignRole({ playerId: p._id, ability, districtName });
     }
     setRolesSent(true);
@@ -92,8 +126,9 @@ export default function FacSetupScreen() {
       return;
     }
     setPairingsGenerated(true);
-    // Advance to pair_build
-    await advanceNewPhase({ sessionId });
+    // Advance to pair_build. fromPhase="waiting" makes this idempotent so a
+    // repeat click can't skip past pair_build into guess.
+    await advanceNewPhase({ sessionId, fromPhase: "waiting" });
     toast("Game started! Players are entering Pair Build phase.");
   }
 
@@ -104,7 +139,7 @@ export default function FacSetupScreen() {
     <div className="screen active" id="s-fac-setup">
       <BrandBar badge="FACILITATOR" backTo="s-entry" />
 
-      {/* Voting phase — shown before scenario is confirmed */}
+      {/* Voting phase: shown before scenario is confirmed */}
       {!scenarioConfirmed && (
         <div
           className="scenario-picker-wrap"
@@ -225,7 +260,7 @@ export default function FacSetupScreen() {
         const assignedTo = Object.entries(abilityAssignments).find(([, aid]) => aid === a.id);
         const assignedPlayer = assignedTo ? nonFac.find((p) => p._id === assignedTo[0]) : null;
         const abilityColors: Record<string, string> = {
-          mender: "#4FC3F7", scout: "#B388FF", engineer: "#FF7043", anchor: "#66BB6A", diplomat: "#FFD740",
+          mender: "#4FC3F7", scout: "#B388FF", engineer: "#FF7043", anchor: "#66BB6A", diplomat: "#FFD740", citizen: "#EC407A",
         };
         const color = abilityColors[a.id] || "#B388FF";
         return (
@@ -238,18 +273,16 @@ export default function FacSetupScreen() {
               </div>
               <div className="card-modal-accent" style={{ background: color }} />
               <div className="card-modal-body">
-                <div className="card-modal-icon" style={{ fontSize: 52 }}>{a.icon}</div>
-                <div className="card-modal-title" style={{ color }}>{a.label}</div>
-                <div className="card-modal-section">
-                  <div className="card-modal-section-lbl">WHAT THE PLAYER SEES</div>
-                  <div className="card-modal-rule">{a.description}</div>
+                <div className="card-modal-icon" style={{ display: "flex", justifyContent: "center" }}>
+                  <AbilityBadge ability={a} size={120} />
                 </div>
+                <div className="card-modal-title" style={{ color }}>{a.label}</div>
                 <div className="card-modal-section">
                   <div className="card-modal-section-lbl" style={{ color: "var(--acc2)" }}>GAME MECHANIC</div>
                   <div className="card-modal-rule">{a.mechanic}</div>
                 </div>
                 <div className="card-modal-section">
-                  <div className="card-modal-section-lbl card-modal-hr-lbl">HR INSIGHT</div>
+                  <div className="card-modal-section-lbl card-modal-hr-lbl">FACILITATOR INSIGHT</div>
                   <div className="card-modal-hr">{a.hrNote}</div>
                 </div>
                 {assignedPlayer && (
@@ -300,19 +333,53 @@ export default function FacSetupScreen() {
               <div className="fac-player-list">
                 {nonFac.map((p, idx) => {
                   const ability = abilityAssignments[p._id] || "";
-                  const district = districtAssignments[p._id] || scenarioData.districtNames[idx] || "";
+                  const district = districtAssignments[p._id] || shuffledDistricts[idx] || "";
                   const baseAbility = ABILITIES.find((ab) => ab.id === ability);
                   const abilityData = baseAbility ? getThemedAbility(baseAbility, scenarioData) : undefined;
                   const abilityColors: Record<string, string> = {
-                    mender: "#4FC3F7", scout: "#B388FF", engineer: "#FF7043", anchor: "#66BB6A", diplomat: "#FFD740",
+                    mender: "#4FC3F7", scout: "#B388FF", engineer: "#FF7043", anchor: "#66BB6A", diplomat: "#FFD740", citizen: "#EC407A",
                   };
 
+                  // Pass #17: dim the row + tag "left the game" when the
+                  // player has dropped out. Still allow REMOVE so the fac
+                  // can hard-clear a ghost; don't allow role assignment.
+                  const isGhost = p.isPresent === false;
                   return (
-                    <div key={p._id} className="fac-player-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 10, cursor: "default", padding: "12px 14px" }}>
+                    <div
+                      key={p._id}
+                      className="fac-player-row"
+                      style={{
+                        flexDirection: "column",
+                        alignItems: "stretch",
+                        gap: 10,
+                        cursor: "default",
+                        padding: "12px 14px",
+                        opacity: isGhost ? 0.45 : 1,
+                        filter: isGhost ? "grayscale(0.6)" : undefined,
+                      }}
+                    >
                       {/* Player name row */}
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <div className="fac-player-avatar">{p.name[0].toUpperCase()}</div>
-                        <div className="fac-player-name" style={{ flex: 1 }}>{p.name}</div>
+                        <div className="fac-player-name" style={{ flex: 1 }}>
+                          {p.name}
+                          {isGhost && (
+                            <span style={{
+                              marginLeft: 8,
+                              fontSize: 9,
+                              letterSpacing: 1,
+                              color: "#FF8A80",
+                              background: "rgba(244,67,54,0.12)",
+                              border: "1px solid rgba(244,67,54,0.35)",
+                              borderRadius: 4,
+                              padding: "2px 6px",
+                              fontWeight: 900,
+                              textTransform: "uppercase",
+                            }}>
+                              LEFT
+                            </span>
+                          )}
+                        </div>
                         {rolesSent && (
                           <div className="fac-sent-badge">SENT</div>
                         )}
@@ -329,34 +396,60 @@ export default function FacSetupScreen() {
 
                       {/* Assignment controls */}
                       {!rolesSent && (
-                        <div style={{ display: "flex", gap: 8, paddingLeft: 40, alignItems: "center" }}>
-                          <input
-                            className="linput"
-                            type="text"
-                            value={district}
-                            onChange={(e) => setDistrictAssignments((prev) => ({ ...prev, [p._id]: e.target.value }))}
-                            placeholder={scenarioData.terminology.district + " name"}
-                            style={{ flex: 1, padding: "8px 12px", fontSize: 13 }}
-                          />
+                        <div style={{ display: "flex", gap: 8, paddingLeft: 40, alignItems: "center", flexWrap: "wrap" }}>
+                          <div
+                            style={{
+                              flex: "1 1 160px",
+                              minWidth: 160,
+                              padding: "8px 12px",
+                              fontSize: 13,
+                              fontWeight: 700,
+                              color: "var(--text)",
+                              background: "rgba(255,255,255,.04)",
+                              border: "1px solid var(--border)",
+                              borderRadius: "var(--brick-radius)",
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                            title={district}
+                          >
+                            {district || scenarioData.terminology.district}
+                          </div>
                           <select
                             value={ability}
+                            disabled={isGhost}
                             onChange={(e) => setAbilityAssignments((prev) => ({ ...prev, [p._id]: e.target.value }))}
                             style={{
-                              background: ability ? `${abilityColors[ability] || "#B388FF"}15` : "rgba(255,255,255,.04)",
+                              backgroundColor: ability ? `${abilityColors[ability] || "#B388FF"}15` : "rgba(255,255,255,.04)",
                               border: `2px solid ${ability ? (abilityColors[ability] || "#B388FF") + "44" : "var(--border)"}`,
                               borderRadius: "var(--brick-radius)",
-                              padding: "8px 12px",
+                              padding: "8px 36px 8px 12px",
                               fontSize: 13,
                               color: ability ? "var(--text)" : "var(--textd)",
                               outline: "none",
-                              minWidth: 140,
-                              cursor: "pointer",
+                              flex: "1 1 160px",
+                              minWidth: 160,
+                              cursor: isGhost ? "not-allowed" : "pointer",
+                              // Pass #17: replace the inconsistent native arrow with a custom
+                              // inline SVG chevron, padded 12px from the right edge and
+                              // vertically centered. Matches the rest of the app's visual rhythm.
+                              appearance: "none",
+                              WebkitAppearance: "none",
+                              MozAppearance: "none",
+                              backgroundImage:
+                                "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23ffffff' stroke-opacity='0.7' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M4 6 L8 10 L12 6'/></svg>\")",
+                              backgroundRepeat: "no-repeat",
+                              backgroundPosition: "right 12px center",
+                              backgroundSize: "14px 14px",
                             }}
                           >
-                            <option value="">Citizen</option>
+                            <option value="">{"\u2014 pick a role \u2014"}</option>
                             {ABILITIES.map((ab) => {
                               const themed = getThemedAbility(ab, scenarioData);
-                              const alreadyUsed = Object.entries(abilityAssignments).some(
+                              // Citizen can be held by 1-2 players (6 or 7 players).
+                              // Non-citizen roles are unique: taken = blocked.
+                              const alreadyUsed = ab.id !== "citizen" && Object.entries(abilityAssignments).some(
                                 ([pid, aid]) => aid === ab.id && pid !== p._id
                               );
                               return (
@@ -385,7 +478,7 @@ export default function FacSetupScreen() {
                             border: abilityData ? `1px solid ${abilityColors[ability] || "#B388FF"}33` : "1px solid var(--border)",
                             color: abilityData ? (abilityColors[ability] || "#B388FF") : "var(--textd)",
                           }}>
-                            {abilityData ? `${abilityData.icon} ${abilityData.label}` : "Citizen"}
+                            {abilityData ? `${abilityData.icon} ${abilityData.label}` : "Unassigned"}
                           </div>
                         </div>
                       )}
@@ -442,43 +535,182 @@ export default function FacSetupScreen() {
 
             {/* Action buttons */}
             <div className="fac-advance-box">
-              {!rolesSent && (
-                <>
-                  <div className="fac-advance-progress">
-                    <div className="fac-advance-bar">
-                      <div className="fac-advance-fill" style={{
-                        width: nonFac.length ? `${Math.min(100, ((nonFac.length >= 2 ? 50 : 0) + (abilitiesAssigned > 0 ? 50 : 0)))}%` : "0%"
-                      }} />
-                    </div>
-                    <div className="fac-advance-count">
-                      {nonFac.length} player{nonFac.length !== 1 ? "s" : ""} {"\u00B7"} {abilitiesAssigned} of {Math.min(nonFac.length, ABILITIES.length)} abilities assigned {"\u00B7"} {nonFac.length - abilitiesAssigned} citizen{nonFac.length - abilitiesAssigned !== 1 ? "s" : ""}
-                    </div>
-                  </div>
-                  <button
-                    className={`lb ${nonFac.length >= 2 ? "lb-green" : "lb-ghost"} fac-advance-btn`}
-                    disabled={nonFac.length < 2}
-                    onClick={handleSendRoles}
-                  >
-                    ASSIGN ROLES TO ALL PLAYERS
-                  </button>
-                  {nonFac.length < 2 && (
-                    <div style={{ fontSize: 10, color: "var(--textdd)", marginTop: 6, textAlign: "center" }}>
-                      Need at least 2 players to start
-                    </div>
-                  )}
-                </>
-              )}
-              {rolesSent && !pairingsGenerated && (() => {
-                const seenCount = nonFac.filter((p) => p.roleSeenAt).length;
-                const allSeen = nonFac.length > 0 && seenCount === nonFac.length;
+              {!rolesSent && (() => {
+                // Pass #17: gate on presentNonFac so dropped players don't
+                // skew the player count or the required-role math.
+                const required = ROLE_COUNTS_BY_PLAYER_COUNT[presentNonFac.length];
+                const requiredCounts: Record<string, number> = {};
+                if (required) for (const r of required) requiredCounts[r] = (requiredCounts[r] ?? 0) + 1;
+                const pendingAbility: Record<string, number> = {};
+                for (const p of presentNonFac) {
+                  const a = (abilityAssignments[p._id] ?? p.ability ?? "").toString();
+                  if (a) pendingAbility[a] = (pendingAbility[a] ?? 0) + 1;
+                }
+                const diffs: string[] = [];
+                const allRoles = new Set([...Object.keys(requiredCounts), ...Object.keys(pendingAbility)]);
+                for (const r of allRoles) {
+                  const req = requiredCounts[r] ?? 0;
+                  const act = pendingAbility[r] ?? 0;
+                  if (req !== act) diffs.push(`${r}: ${act}/${req}`);
+                }
+                const countOK = presentNonFac.length >= MIN_PLAYERS && presentNonFac.length <= MAX_PLAYERS;
+                const rolesOK = countOK && diffs.length === 0;
                 return (
                   <>
+                    <div className="fac-advance-progress">
+                      <div className="fac-advance-bar">
+                        <div className="fac-advance-fill" style={{
+                          width: presentNonFac.length ? `${Math.min(100, ((countOK ? 50 : 0) + (rolesOK ? 50 : 0)))}%` : "0%"
+                        }} />
+                      </div>
+                      <div className="fac-advance-count">
+                        {presentNonFac.length} player{presentNonFac.length !== 1 ? "s" : ""} {"\u00B7"} needs {MIN_PLAYERS}-{MAX_PLAYERS}
+                      </div>
+                    </div>
+                    {countOK && required && (() => {
+                      // Pass #17: per-count role constraint banner. Chip per
+                      // required seat; chip turns green when the assigned count
+                      // matches what the role expects, red otherwise. Works for
+                      // every N in ROLE_COUNTS_BY_PLAYER_COUNT, not only 3.
+                      const labelFor = (roleId: string) => {
+                        const base = ABILITIES.find(a => a.id === roleId);
+                        if (!base) return roleId;
+                        return getThemedAbility(base, scenarioData).label;
+                      };
+                      // Build flat chip list in the order the constraint defines.
+                      // For roles that repeat (e.g. 7 players → citizen twice),
+                      // each seat is its own chip, colored independently based
+                      // on whether enough of that role have been assigned so far.
+                      const seenByRole: Record<string, number> = {};
+                      return (
+                        <div style={{
+                          background: rolesOK ? "rgba(76,175,80,.10)" : "rgba(244,67,54,.08)",
+                          border: `1px solid ${rolesOK ? "rgba(76,175,80,.45)" : "rgba(244,67,54,.45)"}`,
+                          borderRadius: 8, padding: "10px 12px", marginBottom: 10,
+                        }}>
+                          <div style={{
+                            fontWeight: 900, letterSpacing: 1.5,
+                            fontSize: 10, marginBottom: 8,
+                            color: rolesOK ? "#81C784" : "#FF8A80",
+                            textTransform: "uppercase",
+                          }}>
+                            With {presentNonFac.length} players, these roles must be assigned
+                          </div>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                            {required.map((r, i) => {
+                              const got = pendingAbility[r] ?? 0;
+                              seenByRole[r] = (seenByRole[r] ?? 0) + 1;
+                              const met = got >= seenByRole[r];
+                              return (
+                                <span
+                                  key={`${r}-${i}`}
+                                  style={{
+                                    fontSize: 11, fontWeight: 800,
+                                    padding: "4px 10px",
+                                    borderRadius: 999,
+                                    letterSpacing: 0.5,
+                                    background: met ? "rgba(76,175,80,.22)" : "rgba(244,67,54,.18)",
+                                    color: met ? "#C8F7D2" : "#FFB3AD",
+                                    border: `1px solid ${met ? "rgba(76,175,80,.6)" : "rgba(244,67,54,.55)"}`,
+                                  }}
+                                >
+                                  {met ? "\u2713 " : ""}{labelFor(r)}
+                                </span>
+                              );
+                            })}
+                          </div>
+                          {!rolesOK && diffs.length > 0 && (
+                            <div style={{
+                              marginTop: 8,
+                              fontSize: 11,
+                              color: "rgba(255,255,255,.75)",
+                              lineHeight: 1.45,
+                            }}>
+                              {diffs.map((d, i) => {
+                                const [roleId, rest] = d.split(":");
+                                const [act, req] = rest.split("/").map((s) => parseInt(s.trim(), 10));
+                                const label = labelFor(roleId.trim());
+                                if (act > req) return <div key={i}>{`Too many ${label}: ${act} assigned, need ${req}`}</div>;
+                                if (act < req) return <div key={i}>{`Need ${req - act} more ${label}`}</div>;
+                                return null;
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                    <button
+                      className={`lb ${rolesOK ? "lb-green" : "lb-ghost"} fac-advance-btn`}
+                      disabled={!rolesOK}
+                      onClick={() => {
+                        if (!rolesOK) {
+                          if (!countOK) {
+                            toast(`Need between ${MIN_PLAYERS} and ${MAX_PLAYERS} present players. Currently ${presentNonFac.length}.`);
+                          } else if (diffs.length > 0) {
+                            const labelFor = (roleId: string) => {
+                              const base = ABILITIES.find(a => a.id === roleId);
+                              if (!base) return roleId;
+                              return getThemedAbility(base, scenarioData).label;
+                            };
+                            const msg = diffs.map((d) => {
+                              const [roleId, rest] = d.split(":");
+                              const [act, req] = rest.split("/").map((s) => parseInt(s.trim(), 10));
+                              const label = labelFor(roleId.trim());
+                              if (act > req) return `too many ${label}`;
+                              if (act < req) return `missing ${label}`;
+                              return "";
+                            }).filter(Boolean).join(", ");
+                            toast(`Fix role mix: ${msg}.`);
+                          }
+                          return;
+                        }
+                        handleSendRoles();
+                      }}
+                      title={rolesOK ? undefined : "Assign the exact role mix above before sending."}
+                    >
+                      ASSIGN ROLES TO ALL PLAYERS
+                    </button>
+                    {!countOK && (
+                      <div style={{ fontSize: 10, color: "var(--textdd)", marginTop: 6, textAlign: "center" }}>
+                        Need {MIN_PLAYERS}-{MAX_PLAYERS} players
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+              {rolesSent && !pairingsGenerated && (() => {
+                // Pass #17: "all seen" gate only considers present players, so
+                // a dropped player's un-opened card never blocks advance.
+                const seenCount = presentNonFac.filter((p) => p.roleSeenAt).length;
+                const allSeen = presentNonFac.length > 0 && seenCount === presentNonFac.length;
+                const hasMender = presentNonFac.some((p) => p.ability === "mender");
+                const warnNoMender = presentNonFac.length >= 4 && !hasMender;
+                return (
+                  <>
+                    {warnNoMender && (
+                      <div
+                        style={{
+                          background: "rgba(255,215,0,.12)",
+                          border: "1.5px solid rgba(255,215,0,.5)",
+                          borderRadius: 8,
+                          padding: "8px 12px",
+                          fontSize: 11,
+                          fontWeight: 700,
+                          color: "#FFD740",
+                          marginBottom: 10,
+                          textAlign: "center",
+                          lineHeight: 1.35,
+                        }}
+                      >
+                        No Mender assigned. If a connection is lost in the crisis, only the facilitator can repair it.
+                      </div>
+                    )}
                     <button
                       className={`lb ${allSeen ? "lb-yellow" : "lb-ghost"} fac-advance-btn`}
                       disabled={!allSeen}
                       onClick={handleGenerateAndStart}
                     >
-                      {allSeen ? "START PAIR BUILD \u2192" : `WAITING FOR ROLES (${seenCount}/${nonFac.length})`}
+                      {allSeen ? "START PAIR BUILD \u2192" : `WAITING FOR ROLES (${seenCount}/${presentNonFac.length})`}
                     </button>
                     {!allSeen && (
                       <div style={{ fontSize: 10, color: "var(--textdd)", marginTop: 6, textAlign: "center" }}>
@@ -496,44 +728,17 @@ export default function FacSetupScreen() {
             <div className="fac-cards-header">
               <div className="slbl">ROLES REFERENCE</div>
               <div className="fac-cards-sub">
-                Assign abilities strategically. Unassigned players become Citizens. Tap VIEW DETAILS for full info.
+                Every player gets a role. Tap VIEW DETAILS for full info.
               </div>
             </div>
             <div className="fac-card-grid">
-              {/* Citizen card */}
-              <div
-                className="fac-card"
-                style={{ "--card-color": "var(--textd)", cursor: "default" } as React.CSSProperties}
-              >
-                <div className="fac-card-top" style={{ background: "rgba(255,255,255,.08)", minHeight: 90, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <div className="fac-card-studs-row">
-                    <div className="lego-stud-3d" style={{ width: 12, height: 12 }} />
-                    <div className="lego-stud-3d" style={{ width: 12, height: 12 }} />
-                    <div className="lego-stud-3d" style={{ width: 12, height: 12 }} />
-                  </div>
-                  <span style={{ fontSize: 42, position: "relative", zIndex: 1 }}>{"\u{1F9D1}"}</span>
-                  {(nonFac.length - abilitiesAssigned) > 0 && (
-                    <div className="fac-card-taken-overlay" style={{ background: "rgba(0,0,0,.55)", fontSize: 10 }}>
-                      {nonFac.length - abilitiesAssigned} PLAYER{nonFac.length - abilitiesAssigned !== 1 ? "S" : ""}
-                    </div>
-                  )}
-                </div>
-                <div className="fac-card-bottom">
-                  <div className="fac-card-title">Citizen</div>
-                  <div className="fac-card-hr-preview">No special ability. Participates in all phases normally. The team needs citizens to function.</div>
-                  <div className="fac-card-meta">
-                    <span>Default role</span>
-                  </div>
-                </div>
-              </div>
-
               {/* Ability cards */}
               {ABILITIES.map((baseA) => {
                 const a = getThemedAbility(baseA, scenarioData);
                 const assignedTo = Object.entries(abilityAssignments).find(([, aid]) => aid === a.id);
                 const assignedPlayer = assignedTo ? nonFac.find((p) => p._id === assignedTo[0]) : null;
                 const abilityColors: Record<string, string> = {
-                  mender: "#4FC3F7", scout: "#B388FF", engineer: "#FF7043", anchor: "#66BB6A", diplomat: "#FFD740",
+                  mender: "#4FC3F7", scout: "#B388FF", engineer: "#FF7043", anchor: "#66BB6A", diplomat: "#FFD740", citizen: "#EC407A",
                 };
                 const color = abilityColors[a.id] || "#B388FF";
 
@@ -549,7 +754,9 @@ export default function FacSetupScreen() {
                         <div className="lego-stud-3d" style={{ width: 12, height: 12 }} />
                         <div className="lego-stud-3d" style={{ width: 12, height: 12 }} />
                       </div>
-                      <span style={{ fontSize: 42, position: "relative", zIndex: 1 }}>{a.icon}</span>
+                      <div style={{ position: "relative", zIndex: 1 }}>
+                        <AbilityBadge ability={a} size={72} />
+                      </div>
                       {assignedPlayer && (
                         <div className="fac-card-taken-overlay">{assignedPlayer.name.toUpperCase()}</div>
                       )}

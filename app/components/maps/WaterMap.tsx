@@ -18,7 +18,7 @@ interface WaterMapProps {
 export default function WaterMap({ slots, occupiedSlotIds, rebuilt }: WaterMapProps) {
   return (
     <div className="map-img-wrap">
-      {/* Damaged version — always rendered as base */}
+      {/* Damaged version: always rendered as base */}
       <img
         src="/maps/rising-tides-damaged.png"
         alt="Damaged city map"
@@ -29,7 +29,7 @@ export default function WaterMap({ slots, occupiedSlotIds, rebuilt }: WaterMapPr
           transition: "opacity 2s ease-in-out",
         }}
       />
-      {/* Rebuilt version — fades in on top */}
+      {/* Rebuilt version: fades in on top */}
       <img
         src="/maps/rising-tides-rebuilt.png"
         alt="Rebuilt city map"

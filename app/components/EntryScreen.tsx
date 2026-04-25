@@ -69,7 +69,7 @@ function BackgroundSkyline() {
       {/* Warm glow behind center */}
       <ellipse cx="400" cy="320" rx="250" ry="80" fill="rgba(255,200,80,.02)" filter="url(#egl)" />
 
-      {/* City skyline — colorful buildings with studs and glowing windows */}
+      {/* City skyline: colorful buildings with studs and glowing windows */}
       {buildings.map(([bx,by,bw,bh,color], i) => (
         <g key={`b${i}`} opacity=".55">
           {/* Building body */}
@@ -110,10 +110,10 @@ function BackgroundSkyline() {
       {/* Ground plane */}
       <rect x="0" y="400" width="800" height="4" fill="rgba(10,20,35,.9)" />
 
-      {/* Water below — reflections */}
+      {/* Water below: reflections */}
       <rect x="0" y="404" width="800" height="196" fill="url(#ewater)" />
 
-      {/* Building reflections — flipped, faded */}
+      {/* Building reflections: flipped, faded */}
       {buildings.filter((_, i) => i % 2 === 0).map(([bx,,bw,bh,color], i) => (
         <rect key={`rf${i}`} x={bx} y={406} width={bw} height={Math.min(bh * 0.5, 50)}
           fill={color} opacity=".04" />
@@ -178,7 +178,7 @@ function FacilitatorIcon() {
           <circle cx={cx-.4} cy="5.5" r="1" fill="#42A5F5" opacity=".4" />
         </g>
       ))}
-      {/* Screen content — grid of player dots */}
+      {/* Screen content: grid of player dots */}
       {[0,1,2,3].map(r => [0,1,2,3].map(c => (
         <circle key={`d${r}${c}`} cx={16+c*9} cy={16+r*6} r="2"
           fill={r*4+c < 6 ? ["#E53935","#FFD700","#43A047","#4FC3F7","#AB47BC","#FF9800"][r*4+c] : "rgba(255,255,255,.08)"}
@@ -334,7 +334,7 @@ function CityscapeIllustration() {
   );
 }
 
-// Harborside — fishing village with a lighthouse, cottages, seawall, and boats.
+// Harborside: fishing village with a lighthouse, cottages, seawall, and boats.
 // Replaces the old CityscapeIllustration for the rising_tides scenario.
 function HarborsideIllustration() {
   return (
@@ -394,14 +394,14 @@ function HarborsideIllustration() {
       <circle cx="27" cy="48" r="12" fill="url(#hs-beacon)" />
       <circle cx="27" cy="48" r="2.5" fill="#FFE8A0" />
 
-      {/* Seawall — curving stone line along the low harbour */}
+      {/* Seawall: curving stone line along the low harbour */}
       <path d="M55 108 L70 106 L90 104 L120 104 L150 105 L185 106 L220 107 L250 108 L280 108 L280 114 L55 114 Z" fill="#3a3a3a" />
       <path d="M55 108 L70 106 L90 104 L120 104 L150 105 L185 106 L220 107 L250 108 L280 108" stroke="rgba(255,255,255,.12)" strokeWidth=".6" fill="none" />
       {[62,78,96,116,138,160,184,208,232,258].map((sx,i)=>(
         <rect key={`hs-sb${i}`} x={sx} y="109" width="10" height="5" fill="none" stroke="rgba(0,0,0,.35)" strokeWidth=".6" />
       ))}
 
-      {/* Fishing cottages clustered inland — each a pitched-roof brick */}
+      {/* Fishing cottages clustered inland: each a pitched-roof brick */}
       {[
         { x: 70,  w: 22, roof: "#8C3A2A", wall: "#E8D8B0" },
         { x: 100, w: 26, roof: "#6B4A2A", wall: "#DDBFA0" },
@@ -485,7 +485,7 @@ function DeepSpaceIllustration() {
       {/* Planet */}
       <circle cx="45" cy="130" r="28" fill="url(#ds-planet)" />
       <ellipse cx="45" cy="130" rx="28" ry="5" fill="none" stroke="rgba(180,140,255,.15)" strokeWidth="1.5" />
-      {/* Stars — many, varied sizes and colors */}
+      {/* Stars: many, varied sizes and colors */}
       {[[10,8],[28,20],[50,12],[72,5],[95,18],[115,8],[138,22],[155,6],[178,14],[200,5],[225,18],[250,8],[270,20],
         [18,38],[42,45],[68,32],[88,42],[112,36],[145,44],[172,35],[198,42],[228,38],[258,48],
         [8,55],[35,58],[62,65],[85,52],[108,60],[130,55],[158,62],[182,56],[208,65],[235,55],[262,58],
@@ -496,7 +496,7 @@ function DeepSpaceIllustration() {
           fill={i%13===0?"#B388FF":i%9===0?"#80D8FF":i%5===0?"#E0E0FF":"#fff"}
           opacity={i%6===0?0.8:i%4===0?0.5:0.3} />
       ))}
-      {/* Central hub — octagonal shape approximated with a rect + clipped corners */}
+      {/* Central hub: octagonal shape approximated with a rect + clipped corners */}
       <g>
         <polygon points="120,58 160,58 170,68 170,100 160,110 120,110 110,100 110,68" fill="#7B40A0" />
         <polygon points="120,58 160,58 170,68 170,100 160,110 120,110 110,100 110,68" fill="none" stroke="#B388FF" strokeWidth=".8" />
@@ -504,7 +504,7 @@ function DeepSpaceIllustration() {
         <line x1="112" y1="75" x2="168" y2="75" stroke="rgba(180,140,255,.15)" strokeWidth=".5" />
         <line x1="112" y1="92" x2="168" y2="92" stroke="rgba(180,140,255,.15)" strokeWidth=".5" />
         <line x1="140" y1="60" x2="140" y2="108" stroke="rgba(180,140,255,.1)" strokeWidth=".5" />
-        {/* Hub windows — circular with cyan glow */}
+        {/* Hub windows: circular with cyan glow */}
         {[125,140,155].map(cx=>(
           <g key={`hw${cx}`}>
             <circle cx={cx} cy="78" r="6" fill="#0a0820" stroke="#00E5FF" strokeWidth="1.2" />
@@ -633,7 +633,7 @@ function RainforestIllustration() {
       <path d="M0,150 Q30,147 60,150 Q90,154 120,149 Q150,145 180,150 Q210,155 240,149 Q260,146 280,150"
         fill="none" stroke="#1976D2" strokeWidth="1" opacity=".2" />
 
-      {/* Tree 1 — massive wide canopy */}
+      {/* Tree 1: massive wide canopy */}
       <g>
         <rect x="28" y="78" width="14" height="54" rx="3" fill="#6B4226" />
         {/* Bark texture */}
@@ -658,7 +658,7 @@ function RainforestIllustration() {
         <ellipse cx="43" cy="104.5" rx="4" ry="1.3" fill="#A1887F" />
       </g>
 
-      {/* Tree 2 — tall narrow */}
+      {/* Tree 2: tall narrow */}
       <g>
         <rect x="92" y="55" width="8" height="77" rx="2" fill="#8D6E63" />
         {[60,68,76,84,92,100,108,116,124].map((ly,i)=>(
@@ -675,7 +675,7 @@ function RainforestIllustration() {
         ))}
       </g>
 
-      {/* Tree 3 — mushroom shaped (wide flat cap) */}
+      {/* Tree 3: mushroom shaped (wide flat cap) */}
       <g>
         <rect x="138" y="68" width="10" height="64" rx="2" fill="#6B4226" />
         {[72,80,88,96,104,112,120].map((ly,i)=>(
@@ -692,7 +692,7 @@ function RainforestIllustration() {
         ))}
       </g>
 
-      {/* Tree 4 — medium round */}
+      {/* Tree 4: medium round */}
       <g>
         <rect x="196" y="88" width="8" height="44" rx="2" fill="#8D6E63" />
         {[92,100,108,116,124].map((ly,i)=>(
@@ -709,7 +709,7 @@ function RainforestIllustration() {
         ))}
       </g>
 
-      {/* Tree 5 — small bush */}
+      {/* Tree 5: small bush */}
       <g>
         <rect x="240" y="110" width="5" height="22" rx="1.5" fill="#6B4226" />
         <ellipse cx="242" cy="102" rx="14" ry="12" fill="#2E7D32" />
@@ -722,7 +722,7 @@ function RainforestIllustration() {
         ))}
       </g>
 
-      {/* Tree 6 — far right tiny */}
+      {/* Tree 6: far right tiny */}
       <g>
         <rect x="265" y="115" width="4" height="17" rx="1" fill="#8D6E63" />
         <ellipse cx="267" cy="108" rx="10" ry="10" fill="#1B5E20" />
@@ -782,7 +782,7 @@ function OceanDepthsIllustration() {
       <path d="M0,140 Q20,134 40,138 Q60,142 80,136 Q100,132 120,138 Q140,144 160,137 Q180,132 200,138 Q220,144 240,136 Q260,132 280,138"
         fill="none" stroke="#1a3a2a" strokeWidth=".8" />
 
-      {/* Coral cluster 1 — pink/coral */}
+      {/* Coral cluster 1: pink/coral */}
       <g>
         <path d="M30,138 L30,112 M30,118 L20,105 M30,118 L40,102 M30,125 L22,115 M30,125 L38,112 M20,105 L15,98 M40,102 L45,95"
           stroke="#FF6B9D" strokeWidth="2.5" strokeLinecap="round" fill="none" />
@@ -804,7 +804,7 @@ function OceanDepthsIllustration() {
         ))}
       </g>
 
-      {/* Coral cluster 3 — small */}
+      {/* Coral cluster 3: small */}
       <g>
         <path d="M260,136 L260,122 M260,126 L254,118 M260,126 L266,118"
           stroke="#FF8EB3" strokeWidth="1.8" strokeLinecap="round" fill="none" />
@@ -829,7 +829,7 @@ function OceanDepthsIllustration() {
 
       {/* LEGO submarine / diving pod */}
       <g>
-        {/* Body — oval */}
+        {/* Body: oval */}
         <ellipse cx="140" cy="78" rx="38" ry="20" fill="#2E7D6E" />
         <ellipse cx="140" cy="78" rx="36" ry="18" fill="#37897A" />
         {/* Top highlight */}
@@ -864,14 +864,14 @@ function OceanDepthsIllustration() {
         <rect x="138" y="52" width="4" height="8" rx="1" fill="#37897A" />
       </g>
 
-      {/* Fish 1 — cyan */}
+      {/* Fish 1: cyan */}
       <g>
         <polygon points="100,40 110,36 110,44" fill="#4FC3F7" />
         <polygon points="110,32 125,38 110,44" fill="#80DEEA" />
         <circle cx="120" cy="37" r="1.5" fill="#0a2030" />
       </g>
 
-      {/* Fish 2 — light blue, smaller */}
+      {/* Fish 2: light blue, smaller */}
       <g>
         <polygon points="205,35 212,32 212,38" fill="#81D4FA" />
         <polygon points="212,29 222,34 212,39" fill="#B3E5FC" />

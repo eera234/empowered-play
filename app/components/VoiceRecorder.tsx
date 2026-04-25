@@ -53,7 +53,7 @@ export default function VoiceRecorder({ onRecorded }: VoiceRecorderProps) {
         });
       }, 1000);
     } catch {
-      // Mic denied — fail silently
+      // Mic denied: fail silently
     }
   }
 

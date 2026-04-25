@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
@@ -8,6 +8,7 @@ import { SCENARIOS } from "../../lib/constants";
 import { toast } from "sonner";
 import { useGame } from "../GameContext";
 import BrandBar from "./BrandBar";
+import { getDistrictIllustration } from "./DistrictIllustrations";
 
 // ══════════════════════════════
 //  GUESS SCREEN
@@ -68,7 +69,7 @@ export default function GuessScreen() {
     [nonFac, skipIds]
   );
 
-  // District names pool — all nonFac players' district names
+  // District names pool: all nonFac players' district names
   const allDistrictNames = useMemo(
     () => nonFac.map((p) => p.districtName).filter(Boolean) as string[],
     [nonFac]
@@ -76,6 +77,9 @@ export default function GuessScreen() {
   // Names I've already used in my guesses
   const usedByMe = new Set(Array.from(myGuessByTarget.values()));
 
+  // Pass #17: only require present players to finish guessing. A ghost who
+  // left during the guess phase must not block the reveal animation forever.
+  const presentNonFac = nonFac.filter((p) => p.isPresent !== false);
   // Player done + all done detection
   function guessesNeededForPlayer(p: (typeof nonFac)[number]): number {
     const skip = new Set<Id<"players">>([p._id]);
@@ -84,7 +88,7 @@ export default function GuessScreen() {
   }
   const myGuessCount = targetsToGuess.filter((t) => myGuessByTarget.has(t._id)).length;
   const amDone = !isFac && targetsToGuess.length > 0 && myGuessCount === targetsToGuess.length;
-  const allPlayersDone = nonFac.length >= 2 && nonFac.every((p) => {
+  const allPlayersDone = presentNonFac.length >= 2 && presentNonFac.every((p) => {
     const needed = guessesNeededForPlayer(p);
     if (needed === 0) return true; // edge case: 2-player
     const count = (guesses ?? []).filter((g) => g.guesserId === p._id).length;
@@ -107,6 +111,24 @@ export default function GuessScreen() {
     else if (revealedIndex < 0) setRevealedIndex(0);
   }, [revealMode, revealedIndex]);
 
+  // Auto-advance to Story Map after reveal animation completes + reading time.
+  // Ref gate ensures we only call advance once per session even as Convex
+  // re-renders. Facilitator's manual button stays as an early-exit.
+  const autoAdvancedRef = useRef(false);
+  useEffect(() => {
+    if (!revealMode || nonFac.length < 3 || !sessionId) return;
+    if (autoAdvancedRef.current) return;
+    const delay = 350 * nonFac.length + 4500;
+    const t = setTimeout(() => {
+      if (autoAdvancedRef.current) return;
+      autoAdvancedRef.current = true;
+      advanceNewPhase({ sessionId, fromPhase: "guess" }).catch(() => {
+        autoAdvancedRef.current = false;
+      });
+    }, delay);
+    return () => clearTimeout(t);
+  }, [revealMode, nonFac.length, sessionId, advanceNewPhase]);
+
   async function handleAssign(targetId: Id<"players">, name: string) {
     if (!sessionId || !playerId) return;
     try {
@@ -119,7 +141,7 @@ export default function GuessScreen() {
 
   async function handleAdvance() {
     if (!sessionId) return;
-    await advanceNewPhase({ sessionId });
+    await advanceNewPhase({ sessionId, fromPhase: "guess" });
   }
 
   // Score calc (reveal mode): my correct guesses
@@ -241,58 +263,131 @@ export default function GuessScreen() {
                 ? `See how the team did, then advance to the Story Map.`
                 : targetsToGuess.length > 0
                   ? `You got ${myScore} of ${targetsToGuess.length} correct!`
-                  : `No guesses to reveal — only your pair played this round.`)
+                  : `No guesses to reveal: only your pair played this round.`)
             : (isFac
                 ? `Players are matching ${scenarioData.terminology.district} names to anonymous photos.`
                 : targetsToGuess.length === 0
-                  ? `Only your pair in this session — no one else to guess.`
+                  ? `Only your pair in this session: no one else to guess.`
                   : amDone
                     ? `All guesses submitted. Waiting for others...`
                     : `Tap a photo to assign a ${scenarioData.terminology.district} name.`)
           }
         </div>
+        {isFac && !revealMode && (
+          <button
+            onClick={handleAdvance}
+            style={{
+              marginTop: 10,
+              padding: "8px 16px",
+              fontSize: 11,
+              fontWeight: 900,
+              letterSpacing: 1.5,
+              textTransform: "uppercase",
+              background: "rgba(255,215,0,.18)",
+              border: "1.5px solid rgba(255,215,0,.55)",
+              borderRadius: 6,
+              color: "#FFD740",
+              cursor: "pointer",
+              fontFamily: "'Nunito', sans-serif",
+            }}
+            title="Skip guessing and go straight to the Story Map"
+          >
+            SKIP TO STORY MAP {"\u2192"}
+          </button>
+        )}
       </div>
 
-      {/* 2-player empty state: nothing to guess, tell the player and wait for facilitator */}
-      {!isFac && !revealMode && targetsToGuess.length === 0 && (
-        <div style={{
-          margin: 16, padding: "24px 18px",
-          background: "rgba(255,215,0,.06)", border: "1px solid rgba(255,215,0,.25)",
-          borderRadius: "var(--brick-radius)", textAlign: "center",
-        }}>
-          <div style={{ fontSize: 28, marginBottom: 8 }}>{"\u{1F44B}"}</div>
-          <div style={{ fontFamily: "'Black Han Sans', sans-serif", fontSize: 14, letterSpacing: 1, marginBottom: 6 }}>
-            NOTHING TO GUESS
+      {/* 2-player compare reveal. Guessing makes no sense with one partner, so
+          each player (and the facilitator) sees their build photo side by side
+          with the illustrated district they were meant to construct. CONTINUE
+          advances to the Story Map. */}
+      {nonFac.length < 3 && !revealMode && (
+        <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
+          <div style={{ textAlign: "center", marginBottom: 16 }}>
+            <div style={{
+              fontFamily: "'Black Han Sans', sans-serif", fontSize: 14, letterSpacing: 2,
+              color: "var(--acc1)", textTransform: "uppercase", marginBottom: 6,
+            }}>
+              BIG REVEAL
+            </div>
+            <div style={{ fontSize: 12, color: "var(--textd)", maxWidth: 420, margin: "0 auto", lineHeight: 1.5 }}>
+              With two players, there is no cross-guessing. Compare what each of you built against what the card wanted.
+            </div>
           </div>
-          <div style={{ fontSize: 12, color: "var(--textd)", lineHeight: 1.5 }}>
-            With two players, you&apos;ve already coached each other&apos;s builds.
-            Waiting for the facilitator to move on to the Story Map.
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {nonFac.map((p) => {
+              const photo = photoByPlayer.get(p._id);
+              const DistrictArt = getDistrictIllustration(scenario, p.districtName ?? null);
+              const isMe = me && p._id === me._id;
+              return (
+                <div key={p._id} style={{
+                  background: "rgba(255,255,255,.04)",
+                  border: `2px solid ${isMe ? scenarioData.color : "var(--border)"}`,
+                  borderRadius: "var(--brick-radius)", padding: 14,
+                }}>
+                  <div style={{ fontSize: 10, letterSpacing: 2, color: "var(--textd)", fontFamily: "'Black Han Sans', sans-serif", textTransform: "uppercase", marginBottom: 8 }}>
+                    {isMe ? "YOU" : p.name.toUpperCase()} {p.districtName ? "\u00B7 " + p.districtName : ""}
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: 1, color: "var(--acc2)", marginBottom: 6 }}>
+                        WHAT WAS BUILT
+                      </div>
+                      {photo ? (
+                        <img src={photo.url} alt="" style={{
+                          width: "100%", aspectRatio: "4 / 3", objectFit: "cover",
+                          borderRadius: 8, border: "1px solid var(--border)",
+                        }} />
+                      ) : (
+                        <div style={{
+                          width: "100%", aspectRatio: "4 / 3",
+                          background: "rgba(255,255,255,.04)", border: "1px solid var(--border)",
+                          borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
+                          color: "var(--textdd)", fontSize: 24,
+                        }}>{"\u{1F4F7}"}</div>
+                      )}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: 1, color: "var(--acc1)", marginBottom: 6 }}>
+                        WHAT THE CARD WANTED
+                      </div>
+                      <div style={{
+                        width: "100%", aspectRatio: "4 / 3", overflow: "hidden",
+                        borderRadius: 8, border: "1px solid var(--border)",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        background: "rgba(0,0,0,.25)",
+                      }}>
+                        <DistrictArt size={160} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div style={{ marginTop: 16 }}>
+            {isFac ? (
+              <button
+                className="lb lb-yellow"
+                style={{ width: "100%", fontSize: 13, padding: "12px 0" }}
+                onClick={handleAdvance}
+              >
+                ADVANCE TO STORY MAP {"\u2192"}
+              </button>
+            ) : (
+              <div style={{ textAlign: "center", fontSize: 12, color: "var(--textd)", padding: "10px 0" }}>
+                Waiting for the facilitator to advance to the Story Map.
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* Facilitator skip button when the session has too few players for a real round */}
-      {isFac && !revealMode && nonFac.length < 3 && (
-        <div style={{
-          margin: 16, padding: "16px 18px",
-          background: "rgba(79,195,247,.06)", border: "1px solid rgba(79,195,247,.3)",
-          borderRadius: "var(--brick-radius)",
-        }}>
-          <div style={{ fontSize: 12, color: "var(--textd)", marginBottom: 10 }}>
-            Only {nonFac.length} player{nonFac.length === 1 ? "" : "s"} — not enough for cross-guessing.
-            You can skip straight to the Story Map.
-          </div>
-          <button
-            className="lb lb-yellow"
-            style={{ width: "100%", fontSize: 13 }}
-            onClick={handleAdvance}
-          >
-            SKIP GUESSING {"\u2192"}
-          </button>
-        </div>
-      )}
-
-      {/* Content */}
+      {/* Content (3+ players only, or reveal mode). 2-player uses the
+          compare-reveal block above. */}
+      {(nonFac.length >= 3 || revealMode) && (
       <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
 
         {/* Photo grid */}
@@ -310,6 +405,10 @@ export default function GuessScreen() {
             const myGuess = myGuessByTarget.get(player._id);
             const revealed = revealMode && idx <= revealedIndex;
             const correct = revealed && myGuess === player.districtName;
+            // Only reveal the district illustration in reveal mode, since
+            // before then the district name itself is the secret the guesser
+            // is trying to figure out.
+            const DistrictArt = revealed && player.districtName ? getDistrictIllustration(scenario, player.districtName) : null;
 
             return (
               <div
@@ -378,7 +477,7 @@ export default function GuessScreen() {
                       fontSize: 9, fontWeight: 900, letterSpacing: 1,
                       padding: "3px 8px", borderRadius: 4,
                     }}>
-                      YOU COACHED
+                      YOU LED THIS
                     </div>
                   )}
                   {revealMode && correct && (
@@ -421,7 +520,17 @@ export default function GuessScreen() {
                       opacity: revealed ? 1 : 0,
                       transform: revealed ? "translateY(0)" : "translateY(4px)",
                       transition: "opacity .4s, transform .4s",
+                      display: "flex", gap: 10, alignItems: "center",
                     }}>
+                      {DistrictArt && (
+                        <div style={{
+                          width: 48, height: 48, borderRadius: 6, overflow: "hidden",
+                          border: "1px solid var(--border)", flexShrink: 0,
+                        }}>
+                          <DistrictArt size={48} />
+                        </div>
+                      )}
+                      <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 14, fontWeight: 800, color: "white" }}>
                         {player.districtName || "Unnamed"}
                       </div>
@@ -433,12 +542,13 @@ export default function GuessScreen() {
                           you guessed: {myGuess}
                         </div>
                       )}
+                      </div>
                     </div>
                   ) : (
                     <>
                       {skip ? (
                         <div style={{ fontSize: 11, color: "var(--textd)", fontStyle: "italic" }}>
-                          {isMine ? "This is your photo" : "You coached this build"}
+                          {isMine ? "This is your photo" : "You gave the clues for this build"}
                         </div>
                       ) : myGuess ? (
                         <div>
@@ -600,6 +710,7 @@ export default function GuessScreen() {
           </div>
         )}
       </div>
+      )}
 
       {/* Facilitator advance button (bottom bar, reveal mode) */}
       {isFac && revealMode && (

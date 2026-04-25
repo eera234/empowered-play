@@ -9,6 +9,7 @@ import { playSound } from "../../lib/sound";
 import { useGame } from "../GameContext";
 import BrandBar from "./BrandBar";
 import { toast } from "sonner";
+import { getVoteCategoryIllustration } from "./VoteCategoryIllustrations";
 
 export default function VoteScreen() {
   const [pairsOpen, setPairsOpen] = useState(true);
@@ -48,15 +49,17 @@ export default function VoteScreen() {
     playSound("vote-cast");
   }
 
-  // All votes in: every non-fac player has voted in every category
-  const allVotesIn = nonFac.length > 0 && VOTE_CATEGORIES.every((cat) => {
+  // Pass #17: only require present players to vote in every category. A
+  // ghost who left during voting must not block advance to debrief.
+  const presentNonFac = nonFac.filter((p) => p.isPresent !== false);
+  const allVotesIn = presentNonFac.length > 0 && VOTE_CATEGORIES.every((cat) => {
     const voters = new Set((votes ?? []).filter((v) => v.category === cat.id).map((v) => v.playerId));
-    return nonFac.every((p) => voters.has(p._id));
+    return presentNonFac.every((p) => voters.has(p._id));
   });
 
   async function handleAdvance() {
     if (!sessionId) return;
-    await advanceNewPhase({ sessionId });
+    await advanceNewPhase({ sessionId, fromPhase: "vote" });
   }
 
   const allDoneForMe = VOTE_CATEGORIES.every((c) => myVoteByCategory.has(c.id));
@@ -112,7 +115,7 @@ export default function VoteScreen() {
         </div>
       </div>
 
-      {/* Pair reveal — who designed for whom */}
+      {/* Pair reveal: who designed for whom */}
       {pairs.length > 0 && (
         <div style={{
           borderBottom: "1px solid var(--border)",
@@ -202,7 +205,9 @@ export default function VoteScreen() {
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-                <div style={{ fontSize: 26 }}>{cat.icon}</div>
+                <div style={{ flexShrink: 0 }}>
+                  {(() => { const Art = getVoteCategoryIllustration(cat.id); return <Art size={40} />; })()}
+                </div>
                 <div style={{ flex: 1 }}>
                   <div style={{
                     fontFamily: "'Black Han Sans', sans-serif", fontSize: 14, letterSpacing: 1.5,
@@ -240,7 +245,7 @@ export default function VoteScreen() {
                         position: "relative", overflow: "hidden",
                       }}
                     >
-                      {/* Neutral gold fill — same for everyone. We deliberately
+                      {/* Neutral gold fill: same for everyone. We deliberately
                           don't highlight the leader; voting isn't competitive. */}
                       {n > 0 && (
                         <div style={{
@@ -316,7 +321,7 @@ export default function VoteScreen() {
           </button>
         ) : (
           <div style={{ fontSize: 11, color: "var(--textd)" }}>
-            {allVotesIn ? "All votes in \u2014 waiting for facilitator" : "Waiting for everyone to vote"}
+            {allVotesIn ? "All votes in. Waiting for facilitator." : "Waiting for everyone to vote"}
           </div>
         )}
       </div>

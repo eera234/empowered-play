@@ -5,7 +5,7 @@ import { useGame } from "../GameContext";
 
 // Always-visible escape hatch. The BrandBar LEAVE button is the primary exit,
 // but if a user ends up on a broken or loading screen where the brand bar isn't
-// rendered — or if they're panicking and can't find it — this floating button
+// rendered: or if they're panicking and can't find it: this floating button
 // is the guaranteed last resort. Collapsed by default; expands into a small
 // recovery panel with a clear Leave action plus a "hard reset" that reloads
 // the tab (for the Safari-cached-JS-bundle case).
@@ -23,7 +23,7 @@ export default function StuckRecovery() {
 
   const collapsedStyle: React.CSSProperties = {
     position: "fixed",
-    left: 12,
+    right: 12,
     bottom: 12,
     zIndex: 9999,
     padding: "8px 12px",
@@ -98,7 +98,7 @@ export default function StuckRecovery() {
       </div>
 
       <div style={{ fontSize: 11, color: "rgba(255,255,255,.65)", lineHeight: 1.5, marginBottom: 10 }}>
-        If you can't move forward, use one of these to reset this device. The game on the server isn't affected — you can rejoin with the same code.
+        If you can't move forward, use one of these to reset this device. The game on the server isn't affected: you can rejoin with the same code.
       </div>
 
       <button

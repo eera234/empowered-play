@@ -3,10 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { COMPLETE_COPY, VOTE_CATEGORIES, REFLECTION_PROMPTS } from "../../lib/constants";
+import { COMPLETE_COPY, VOTE_CATEGORIES } from "../../lib/constants";
 import { playSound } from "../../lib/sound";
 import { useGame } from "../GameContext";
 import BrandBar from "./BrandBar";
+import { getVoteCategoryIllustration } from "./VoteCategoryIllustrations";
 
 const CONFETTI_COLORS = ["#FFD700", "#4FC3F7", "#FF5252", "#69F0AE", "#E3000B", "#006DB7", "#00A650"];
 
@@ -53,11 +54,11 @@ export default function CompleteScreen() {
   const scenarioId = scenario || session?.scenario || "rising_tides";
   const copy = COMPLETE_COPY[scenarioId] ?? COMPLETE_COPY.rising_tides;
 
-  // Queries for the Debrief Summary — votes + reflection answers tied to this
-  // session. These feed the bar charts and the quoted answer cards below.
+  // Queries for the Debrief Summary: vote tallies only. Reflection answers
+  // were removed; they were revealing private thoughts to the whole room and
+  // were never meant to be a shared broadcast.
   const players = useQuery(api.game.getPlayers, sessionId ? { sessionId } : "skip");
   const votes = useQuery(api.voting.getVotes, sessionId ? { sessionId } : "skip");
-  const debriefAnswers = useQuery(api.game.getDebriefAnswers, sessionId ? { sessionId } : "skip");
 
   const nonFac = (players ?? []).filter((p) => !p.isFacilitator);
   const playerName = (id?: string) => nonFac.find((p) => p._id === id)?.name ?? "";
@@ -76,20 +77,6 @@ export default function CompleteScreen() {
     }
     return out;
   }, [votes, players]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Reflection answers keyed by the base prompt (strip the "[reflection] " tag).
-  const reflectionByPrompt = useMemo(() => {
-    const map = new Map<string, { name: string; answer: string }[]>();
-    for (const prompt of REFLECTION_PROMPTS) map.set(prompt, []);
-    for (const a of (debriefAnswers ?? [])) {
-      if (!a.question.startsWith("[reflection] ")) continue;
-      const base = a.question.slice("[reflection] ".length);
-      const arr = map.get(base);
-      if (!arr) continue;
-      arr.push({ name: playerName(a.playerId) || "Someone", answer: a.answer });
-    }
-    return map;
-  }, [debriefAnswers, players]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fire the fanfare exactly once on first mount. Auto-played audio is
   // gated by the global first-gesture unlock in app/page.tsx, so if the
@@ -178,7 +165,7 @@ export default function CompleteScreen() {
 
         {/* ── Debrief Summary ── */}
         <div className="comp-summary">
-          {/* The Votes — neutral gold bars per category */}
+          {/* The Votes: neutral gold bars per category */}
           <div className="comp-summary-section">
             <div className="comp-summary-heading">THE VOTES</div>
             {VOTE_CATEGORIES.map((cat) => {
@@ -187,7 +174,9 @@ export default function CompleteScreen() {
               return (
                 <div key={cat.id} className="comp-vote-block">
                   <div className="comp-vote-header">
-                    <span className="comp-vote-icon">{cat.icon}</span>
+                    <span className="comp-vote-icon" style={{ display: "inline-flex", alignItems: "center" }}>
+                      {(() => { const Art = getVoteCategoryIllustration(cat.id); return <Art size={28} />; })()}
+                    </span>
                     <div>
                       <div className="comp-vote-title">{cat.label.toUpperCase()}</div>
                       <div className="comp-vote-q">{cat.question}</div>
@@ -216,30 +205,6 @@ export default function CompleteScreen() {
             })}
           </div>
 
-          {/* What You Noticed — reflection answers grouped by prompt */}
-          <div className="comp-summary-section">
-            <div className="comp-summary-heading">WHAT YOU NOTICED</div>
-            {REFLECTION_PROMPTS.map((prompt, idx) => {
-              const answers = reflectionByPrompt.get(prompt) ?? [];
-              return (
-                <div key={idx} className="comp-answer-group">
-                  <div className="comp-answer-prompt">{prompt}</div>
-                  {answers.length === 0 ? (
-                    <div className="comp-answer-empty">No answers yet.</div>
-                  ) : (
-                    <div className="comp-answer-list">
-                      {answers.map((a, i) => (
-                        <div key={i} className="comp-answer-card">
-                          <div className="comp-answer-name">{a.name}</div>
-                          <div className="comp-answer-body">&ldquo;{a.answer}&rdquo;</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
         </div>
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", marginTop: 24 }}>

@@ -9,7 +9,7 @@ const LEGO_KEYWORDS = [
   "plastic", "duplo", "construction", "miniature", "model",
 ];
 
-// Confidence threshold — lower = more lenient
+// Confidence threshold: lower = more lenient
 const CONFIDENCE_THRESHOLD = 0.08;
 
 interface DetectionResult {
@@ -58,11 +58,11 @@ export function useLegoDetector() {
       }
 
       // Also check if the image has colorful blocky features
-      // MobileNet might classify LEGO as various objects — be lenient
+      // MobileNet might classify LEGO as various objects: be lenient
       // If the top prediction confidence is low, it might be an unusual object (like LEGO)
       const topConfidence = predictions[0]?.probability || 0;
       if (topConfidence < 0.3) {
-        // Model is uncertain — could be LEGO (unusual object)
+        // Model is uncertain: could be LEGO (unusual object)
         return { isLego: true, label: "uncertain (allowing)", confidence: topConfidence };
       }
 

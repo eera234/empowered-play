@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from "react";
 import { Id } from "../convex/_generated/dataModel";
+import { usePresence } from "./components/usePresence";
 
 interface CardData {
   id: number;
@@ -38,7 +39,7 @@ interface GameContextValue extends GameState {
 
 const STORAGE_KEY = "empowered-play-session";
 
-// Fields to persist (not photo or card — those come from Convex)
+// Fields to persist (not photo or card: those come from Convex)
 interface PersistedData {
   role: "player" | "facilitator" | null;
   name: string;
@@ -105,7 +106,7 @@ function clearStorage() {
 }
 
 // If the URL has ?reset=1, wipe storage and strip the query param before React hydrates state.
-// This is the escape hatch for "I'm stuck on Safari" — user just appends ?reset=1 to the URL.
+// This is the escape hatch for "I'm stuck on Safari": user just appends ?reset=1 to the URL.
 function consumeResetParam(): boolean {
   if (typeof window === "undefined") return false;
   try {
@@ -137,7 +138,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   });
 
   // Restore from localStorage AFTER hydration to avoid mismatch.
-  // Honors ?reset=1 as a hard escape — clears storage and skips restore.
+  // Honors ?reset=1 as a hard escape: clears storage and skips restore.
   const [restored, setRestored] = useState(false);
   useEffect(() => {
     if (restored) return;
@@ -178,7 +179,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (typeof window !== "undefined") window.scrollTo(0, 0);
   }, []);
 
-  // Leave the current session — clears local state + localStorage.
+  // Leave the current session: clears local state + localStorage.
   // The server-side session is untouched; user can rejoin with the same code.
   // reload=true forces a full page reload as a last resort against stuck UI state.
   const leaveSession = useCallback((opts?: { confirm?: boolean; reload?: boolean }) => {
@@ -203,10 +204,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
       scenario: "",
     });
     if (opts?.reload && typeof window !== "undefined") {
-      // Hard reload — blows away any in-memory Convex subscriptions and component trees
+      // Hard reload: blows away any in-memory Convex subscriptions and component trees
       window.location.href = window.location.pathname;
     }
   }, []);
+
+  // Pass #17: auto-presence. Mounted whenever there is a playerId so the
+  // server knows this tab is alive. See app/components/usePresence.ts.
+  usePresence(state.playerId);
 
   return (
     <GameContext.Provider value={{ ...state, set, goTo, leaveSession }}>

@@ -14,7 +14,7 @@ export default function BrandBar({ badge, backTo, children }: BrandBarProps) {
   const { sessionId, goTo, leaveSession } = useGame();
   const [muted, setLocalMuted] = useState(false);
 
-  // Sync with the sound module — mute state lives there so it can also be read
+  // Sync with the sound module: mute state lives there so it can also be read
   // from non-React code (playSound bails early when muted). Starts as false on
   // first render to avoid SSR hydration mismatch; real value reads after mount.
   useEffect(() => {
@@ -27,7 +27,7 @@ export default function BrandBar({ badge, backTo, children }: BrandBarProps) {
     setMuted(!isMuted());
   }
 
-  // Clicking the logo should never silently navigate away from an active session —
+  // Clicking the logo should never silently navigate away from an active session , 
   // that creates ghost state where refresh puts you right back. If a session is
   // active, trigger the leave flow; otherwise just go home.
   function handleBrandClick() {
@@ -66,7 +66,7 @@ export default function BrandBar({ badge, backTo, children }: BrandBarProps) {
             padding: "4px 8px",
             minWidth: 32,
           }}
-          title={muted ? "Sound off \u2014 tap to enable" : "Sound on \u2014 tap to mute"}
+          title={muted ? "Sound off. Tap to enable." : "Sound on. Tap to mute."}
           aria-label={muted ? "Unmute sound" : "Mute sound"}
         >
           {muted ? "\u{1F507}" : "\u{1F50A}"}

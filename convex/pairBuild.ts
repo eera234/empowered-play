@@ -3,7 +3,7 @@ import { v } from "convex/values";
 import { PAIR_BUILD_ROUNDS } from "../lib/constants";
 
 // ══════════════════════════════
-//  PAIR BUILD PHASE — Queries
+//  PAIR BUILD PHASE : Queries
 // ══════════════════════════════
 
 // Get all clues sent in a session (or filter by architect)
@@ -55,7 +55,7 @@ export const getPlayerBuildPhotos = query({
 });
 
 // ══════════════════════════════
-//  PAIR BUILD PHASE — Mutations
+//  PAIR BUILD PHASE : Mutations
 // ══════════════════════════════
 
 // Architect selects a clue card to send to their builder
@@ -94,7 +94,15 @@ export const selectClue = mutation({
         .query("players")
         .withIndex("by_session", (q) => q.eq("sessionId", sessionId))
         .collect();
-      const architects = allPlayers.filter((p) => !p.isFacilitator && p.architectFor);
+      // Pass #17: only present architects count. A ghost architect who never
+      // sent a clue must not block auto-advance to the build stage.
+      const nowMs = Date.now();
+      const architects = allPlayers.filter((p) =>
+        !p.isFacilitator
+          && p.architectFor
+          && p.lastSeenAt != null
+          && nowMs - p.lastSeenAt <= 8_000
+      );
       const sentThisRound = await ctx.db
         .query("sent_clues")
         .withIndex("by_session", (q) => q.eq("sessionId", sessionId))
@@ -164,7 +172,15 @@ export const uploadBuildPhoto = mutation({
         .query("players")
         .withIndex("by_session", (q) => q.eq("sessionId", sessionId))
         .collect();
-      const builders = allPlayers.filter((p) => !p.isFacilitator && p.builderFor);
+      // Pass #17: only present builders count. A ghost builder who never
+      // uploaded must not block auto-advance to the next round / guess phase.
+      const nowMs = Date.now();
+      const builders = allPlayers.filter((p) =>
+        !p.isFacilitator
+          && p.builderFor
+          && p.lastSeenAt != null
+          && nowMs - p.lastSeenAt <= 8_000
+      );
       const uploadedThisRound = await ctx.db
         .query("build_photos")
         .withIndex("by_session", (q) => q.eq("sessionId", sessionId))
@@ -198,13 +214,17 @@ export const uploadBuildPhoto = mutation({
 // Each round has two stages: "clue" (architects pick a clue) → "build" (builders build + upload).
 // Flow: R1 clue → R1 build → R2 clue → R2 build → R3 clue → R3 build → guess phase.
 // Pass fromRound+fromStage to guard against races.
+// Gate: unless force=true OR the deadline has already passed, the stage only
+// advances if every expected architect/builder has submitted for this round.
+// Timer-expiry auto-advance calls with force:true; HR manual skip calls without.
 export const advanceSubPhase = mutation({
   args: {
     sessionId: v.id("sessions"),
     fromRound: v.optional(v.number()),
     fromStage: v.optional(v.string()),
+    force: v.optional(v.boolean()),
   },
-  handler: async (ctx, { sessionId, fromRound, fromStage }) => {
+  handler: async (ctx, { sessionId, fromRound, fromStage, force }) => {
     const session = await ctx.db.get(sessionId);
     if (!session || session.phase !== "pair_build") return { advanced: false };
 
@@ -213,6 +233,44 @@ export const advanceSubPhase = mutation({
 
     if (fromRound !== undefined && fromRound !== currentRound) return { advanced: false };
     if (fromStage !== undefined && fromStage !== currentStage) return { advanced: false };
+
+    // Readiness gate: deadline expired or force-flag bypasses; otherwise every
+    // expected architect clue / builder photo must be in for this round.
+    // Undefined deadline means the ready-gate window hasn't ended yet; treat
+    // as not-passed so the gate still applies. A real, past deadline is the
+    // only reason to bypass the clue/photo count check.
+    const deadlinePassed = session.subPhaseDeadline !== undefined
+      && session.subPhaseDeadline <= Date.now();
+    if (!force && !deadlinePassed) {
+      const allPlayers = await ctx.db
+        .query("players")
+        .withIndex("by_session", (q) => q.eq("sessionId", sessionId))
+        .collect();
+      const nonFac = allPlayers.filter(p => !p.isFacilitator);
+      if (currentStage === "clue") {
+        const architects = nonFac.filter(p => p.architectFor);
+        const sent = await ctx.db
+          .query("sent_clues")
+          .withIndex("by_session", (q) => q.eq("sessionId", sessionId))
+          .collect();
+        const sentIds = new Set(sent.filter(c => c.round === currentRound).map(c => c.architectId));
+        const missing = architects.filter(a => !sentIds.has(a._id));
+        if (missing.length > 0) {
+          return { advanced: false, reason: "CLUES_PENDING", missing: missing.map(m => m.name) };
+        }
+      } else if (currentStage === "build") {
+        const builders = nonFac.filter(p => p.builderFor);
+        const photos = await ctx.db
+          .query("build_photos")
+          .withIndex("by_session", (q) => q.eq("sessionId", sessionId))
+          .collect();
+        const photoIds = new Set(photos.filter(p => p.round === currentRound).map(p => p.playerId));
+        const missing = builders.filter(b => !photoIds.has(b._id));
+        if (missing.length > 0) {
+          return { advanced: false, reason: "PHOTOS_PENDING", missing: missing.map(m => m.name) };
+        }
+      }
+    }
 
     const roundCfg = PAIR_BUILD_ROUNDS[currentRound - 1];
 

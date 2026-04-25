@@ -8,6 +8,8 @@ import { useGame } from "../GameContext";
 import BrandBar from "./BrandBar";
 import { SCENARIO_ILLUSTRATIONS } from "./EntryScreen";
 import { playSound } from "../../lib/sound";
+import RoleRevealCard from "./RoleRevealCard";
+import AbilityBadge from "./AbilityBadge";
 
 const ABILITY_COLORS: Record<string, string> = {
   mender: "#4FC3F7", scout: "#B388FF", engineer: "#FF7043", anchor: "#66BB6A", diplomat: "#FFD740",
@@ -172,85 +174,19 @@ export default function WaitScreen() {
     <div className="screen active" id="s-wait">
       <BrandBar />
 
-      {/* Role reveal modal — full-screen card flip on first receipt of role */}
+      {/* Role reveal flip card. Player taps a face-down LEGO-stud card, it
+          flips to reveal their ability illustration and district name, then a
+          CONTINUE button marks the role as seen. */}
       {showRoleReveal && chosenScenario && (
-        <div
-          style={{
-            position: "fixed", inset: 0, background: "rgba(6,6,26,.96)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            padding: 24, zIndex: 800,
-            animation: "fadeIn .35s ease-out",
-          }}
-        >
-          <div
-            style={{
-              maxWidth: 380, width: "100%",
-              background: `linear-gradient(155deg, ${chosenScenario.color}24, rgba(10,10,20,.95) 60%)`,
-              border: `2px solid ${chosenScenario.color}80`,
-              borderRadius: 16, padding: "28px 24px",
-              boxShadow: `0 20px 60px ${chosenScenario.color}33`,
-              textAlign: "center",
-              animation: "fadeIn .6s cubic-bezier(.2,.9,.3,1.2)",
-            }}
-          >
-            <div style={{
-              fontFamily: "'Black Han Sans', sans-serif", fontSize: 11,
-              letterSpacing: 3, color: "var(--textd)", marginBottom: 6,
-            }}>
-              YOUR ROLE
-            </div>
-            {me?.districtName && (
-              <>
-                <div style={{ fontSize: 10, color: "var(--textdd)", letterSpacing: 1, textTransform: "uppercase", fontWeight: 800 }}>
-                  {chosenScenario.terminology.district}
-                </div>
-                <div style={{
-                  fontFamily: "'Black Han Sans', sans-serif", fontSize: 26,
-                  color: chosenScenario.color, letterSpacing: 2, marginBottom: 16,
-                }}>
-                  {me.districtName.toUpperCase()}
-                </div>
-              </>
-            )}
-            {myAbility ? (
-              <div style={{
-                background: `${abilityColor}18`, border: `1px solid ${abilityColor}55`,
-                borderRadius: 10, padding: "14px 16px", marginBottom: 20,
-              }}>
-                <div style={{ fontSize: 32, marginBottom: 8 }}>{myAbility.icon}</div>
-                <div style={{
-                  fontFamily: "'Black Han Sans', sans-serif", fontSize: 16,
-                  color: abilityColor || "white", letterSpacing: 2, marginBottom: 8,
-                }}>
-                  {myAbility.label.toUpperCase()}
-                </div>
-                <div style={{ fontSize: 12, color: "white", lineHeight: 1.5 }}>
-                  {myAbility.description}
-                </div>
-              </div>
-            ) : (
-              <div style={{
-                background: "rgba(255,255,255,.04)", border: "1px solid var(--border)",
-                borderRadius: 10, padding: "14px 16px", marginBottom: 20,
-                fontSize: 12, color: "var(--textd)", fontStyle: "italic",
-              }}>
-                You are a Citizen. No special ability &mdash; but the team needs you on the map.
-              </div>
-            )}
-            <button
-              className="lb lb-yellow"
-              onClick={handleAcknowledgeRole}
-              style={{ padding: "12px 36px", fontSize: 13, width: "100%" }}
-            >
-              TAP TO CONTINUE {"\u2192"}
-            </button>
-          </div>
-        </div>
+        <RoleRevealCard
+          ability={myAbility ?? null}
+          onContinue={handleAcknowledgeRole}
+        />
       )}
 
       <div className="wait-wrap">
         <div className="wait-code-box">
-          <div className="wc-lbl">YOU ARE IN</div>
+          <div className="wc-lbl">WELCOME</div>
           <div className="wc-name">{name}</div>
           <div className="wc-sub">
             Playing{" "}
@@ -260,7 +196,7 @@ export default function WaitScreen() {
           </div>
         </div>
 
-        {/* Role card — appears once the facilitator sends roles */}
+        {/* Role card: appears once the facilitator sends roles */}
         {hasRole && (
           <div style={{
             margin: "16px auto 8px", maxWidth: 360,
@@ -276,23 +212,13 @@ export default function WaitScreen() {
             }}>
               YOUR ROLE
             </div>
-            {me?.districtName && chosenScenario && (
-              <div style={{ marginTop: 6 }}>
-                <div style={{ fontSize: 10, color: "var(--textdd)", letterSpacing: 1, textTransform: "uppercase", fontWeight: 800 }}>
-                  {chosenScenario.terminology.district}
-                </div>
-                <div style={{ fontSize: 18, fontWeight: 900, color: chosenScenario.color }}>
-                  {me.districtName}
-                </div>
-              </div>
-            )}
             {myAbility && (
-              <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10,
-                padding: "8px 10px", borderRadius: 8,
+              <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 12,
+                padding: "10px 12px", borderRadius: 8,
                 background: `${abilityColor}15`,
                 border: `1px solid ${abilityColor}33`,
               }}>
-                <span style={{ fontSize: 22 }}>{myAbility.icon}</span>
+                <AbilityBadge ability={myAbility} size={56} />
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13, fontWeight: 900, color: abilityColor || "white" }}>
                     {myAbility.label}
@@ -300,12 +226,29 @@ export default function WaitScreen() {
                   <div style={{ fontSize: 11, color: "var(--textd)", lineHeight: 1.4 }}>
                     {myAbility.description}
                   </div>
+                  {myAbility.descriptionC1 && (
+                    <div style={{ fontSize: 11, color: "var(--textd)", lineHeight: 1.4, marginTop: 4, opacity: 0.9 }}>
+                      {myAbility.descriptionC1}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
             {!myAbility && (
-              <div style={{ marginTop: 10, fontSize: 11, color: "var(--textd)", fontStyle: "italic" }}>
-                Citizen {"\u2014"} no special ability, but the team needs you.
+              <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 12,
+                padding: "10px 12px", borderRadius: 8,
+                background: "rgba(108,122,153,.15)",
+                border: "1px solid rgba(108,122,153,.33)",
+              }}>
+                <AbilityBadge ability={null} size={56} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 900, color: "#9aa6c2" }}>
+                    Citizen
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--textd)", lineHeight: 1.4 }}>
+                    You hold the map together and keep every connection alive.
+                  </div>
+                </div>
               </div>
             )}
           </div>
