@@ -1,8 +1,8 @@
-import { mutation, query, internalMutation } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
-import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
+import { PER_CONNECTION_BUILD_SECONDS } from "../lib/constants";
 
 // ══════════════════════════════
 //  MAP PHASE : Queries
@@ -252,9 +252,10 @@ export const markConnectionReady = mutation({
   },
 });
 
-// Pass #16: client-side 90s timer calls this when it lapses with neither
-// photo uploaded. Marks expiredAt so the UI can offer a re-request flow.
-// Idempotent: repeat calls after expiry are no-ops.
+// Pass #16 / Pass #29: latent HR/facilitator force-skip plumbing. Pass #29
+// stopped firing this from the client on timer-zero; the per-connection
+// timer is now a UI signal only and uploads still go through past zero.
+// Kept for a future force-skip flow. Idempotent: repeat calls are no-ops.
 export const expireUnbuiltConnection = mutation({
   args: { connectionId: v.id("connections") },
   handler: async (ctx, { connectionId }) => {
@@ -263,7 +264,7 @@ export const expireUnbuiltConnection = mutation({
     if (conn.built) return { success: false as const, alreadyBuilt: true as const };
     if (conn.expiredAt) return { success: true as const, alreadyExpired: true as const };
     if (!conn.buildStartedAt) return { success: false as const, error: "Build not started." };
-    if (Date.now() < conn.buildStartedAt + 90_000) {
+    if (Date.now() < conn.buildStartedAt + PER_CONNECTION_BUILD_SECONDS * 1000) {
       return { success: false as const, error: "Still within build window." };
     }
     if (conn.photoA || conn.photoB) {
@@ -299,18 +300,13 @@ export const uploadConnectionPhotoSide = mutation({
     const conn = await ctx.db.get(connectionId);
     if (!conn) return { success: false as const, error: "Connection not found." };
 
-    // Pass #16 gates: expiredAt blocks further uploads; for post-Pass #16
-    // rows (typeRevealedAt is set), require the ready gate to have fired and
-    // that we are still within the 90s build window (with 5s grace). Legacy
-    // rows without typeRevealedAt bypass the gate so old sessions still work.
-    if (conn.expiredAt) {
-      return { success: false as const, error: "Connection expired. Re-request to try again." };
-    }
+    // Pass #29: deadline expiry is a UI signal, not a server hard-stop.
+    // Late uploads must succeed — the only remaining gate is the ready
+    // precondition (post-Pass #16 rows must have buildStartedAt before a
+    // photo can land). Legacy rows without typeRevealedAt bypass the gate
+    // so old sessions still work.
     if (conn.typeRevealedAt && !conn.buildStartedAt) {
       return { success: false as const, error: "Both partners must tap ready before building." };
-    }
-    if (conn.buildStartedAt && Date.now() > conn.buildStartedAt + 95_000) {
-      return { success: false as const, error: "Time is up for this bridge." };
     }
 
     const pid = playerId as unknown as string;
@@ -580,25 +576,6 @@ export const previewCrisisForScout = mutation({
   args: { sessionId: v.id("sessions"), crisisCardId: v.string() },
   handler: async (ctx, { sessionId, crisisCardId }) => {
     await ctx.db.patch(sessionId, { scoutPreview: crisisCardId });
-  },
-});
-
-// Scout broadcasts their intel into team chat (replaces the "tell verbally"
-// step). Posts one system message signed as "SCOUT INTEL" and clears the
-// preview state so it won't double-post on next render.
-export const broadcastScoutIntel = mutation({
-  args: { sessionId: v.id("sessions"), scoutPlayerId: v.id("players"), message: v.string() },
-  handler: async (ctx, { sessionId, scoutPlayerId, message }) => {
-    const player = await ctx.db.get(scoutPlayerId);
-    if (!player) return { success: false as const, error: "Scout not found." };
-    await ctx.db.insert("messages", {
-      sessionId,
-      sender: "SCOUT INTEL",
-      text: message,
-      isFacilitator: false,
-    });
-    await ctx.db.patch(sessionId, { scoutPreview: undefined });
-    return { success: true as const };
   },
 });
 
@@ -1046,6 +1023,7 @@ import {
   DIPLOMAT_UNMUTE_TOTAL_MS,
   DIPLOMAT_UNMUTE_CHAOS_END_MS,
   DIPLOMAT_UNMUTE_MAX_REMUTES_PER_PLAYER,
+  CRISIS_CARDS,
 } from "../lib/constants";
 
 function pickRandomFromArray<T>(arr: T[]): T | null {
@@ -1128,12 +1106,16 @@ export const scoutChooseC1 = mutation({
         isFacilitator: false,
       });
     } else if (targetPlayerId) {
-      const target = await ctx.db.get(targetPlayerId);
-      await ctx.db.insert("messages", {
-        sessionId,
-        sender: "SCOUT",
-        text: `${target?.name ?? "One of you"}: your connection is about to break. Prepare.`,
-        isFacilitator: false,
+      // Pass #30: private warning. Set a session field that drives a
+      // fullscreen modal for the target only, instead of inserting into
+      // global chat (which every player can read).
+      const crisisCard = CRISIS_CARDS.find(c => c.id === (session.crisisCardId ?? ""));
+      await ctx.db.patch(sessionId, {
+        scoutWarning: {
+          targetPlayerId,
+          text: `Your district is targeted by ${crisisCard?.title ?? "the next crisis"}. Brace.`,
+          at: Date.now(),
+        },
       });
     }
 
@@ -1142,6 +1124,21 @@ export const scoutChooseC1 = mutation({
 
     // Pass #14: try to lock in damage if all pre-resolution actions are done.
     await maybeResolveCrisis(ctx, sessionId);
+  },
+});
+
+// Pass #30: target of a Scout DM acknowledges the private warning, clearing
+// the modal. No-op if the warning is for a different player or already cleared.
+export const acknowledgeScoutWarning = mutation({
+  args: {
+    sessionId: v.id("sessions"),
+    playerId: v.id("players"),
+  },
+  handler: async (ctx, { sessionId, playerId }) => {
+    const session = await ctx.db.get(sessionId);
+    if (!session?.scoutWarning) return;
+    if (session.scoutWarning.targetPlayerId !== playerId) return;
+    await ctx.db.patch(sessionId, { scoutWarning: undefined });
   },
 });
 
@@ -1664,7 +1661,6 @@ async function commitCrisisDeal(
     // countdown; "announced" → damage shown + rebuild kicks off; "cleared"
     // → ready for next crisis. Diplomat unmute game starts on "announced",
     // not at deal time.
-    const PRE_CRISIS_MS = 10_000;
     await ctx.db.patch(sessionId, {
       crisisCardId,
       crisisIndex,
@@ -1674,61 +1670,31 @@ async function commitCrisisDeal(
       damageResolved: false,
       ch2State: "CH2_CRISIS_ACTIVE",
       crisisSubPhase: "pre",
-      preCrisisDeadline: Date.now() + PRE_CRISIS_MS,
-      // Chat mute + Diplomat timer do NOT start yet — both begin at announce.
+      // Pass #30: pre-crisis is now open-ended. Damage resolves only when
+      // every shielder/pre-resolution role has committed (see
+      // maybeResolveCrisis). No 10s auto-fire.
+      preCrisisDeadline: undefined,
+      // Chat mute + Diplomat timer do NOT start yet, both begin at announce.
       scoutC1Choice: undefined,
       scoutC1Target: undefined,
       scoutC2Choice: undefined,
+      scoutWarning: undefined,
       anchorImmuneTarget: undefined,
       menderHealed: undefined,
       // Pass #16: clear stale protection-save banners from a previous crisis.
       lastProtectionEvents: [],
     });
 
-    // Pass #18: schedule the announce (damage lands + Diplomat game starts +
-    // rebuild countdown begins) at the pre-crisis deadline. Idempotent — safe
-    // to race with an early maybeResolveCrisis, which force-resolves once all
-    // role inputs are in.
-    await ctx.scheduler.runAfter(
-      PRE_CRISIS_MS,
-      internal.mapPhase.announceCrisis,
-      { sessionId, crisisIndex },
-    );
+    // Pass #30: damage no longer auto-fires on a 10s scheduler. It resolves
+    // only via maybeResolveCrisis once all pre-resolution role-holders
+    // (Scout, Anchor, Engineer C1, Citizens) have committed. Try once now in
+    // case there are no shielder roles in this game.
+    await maybeResolveCrisis(ctx, sessionId);
 }
 
-// Pass #18: called at the pre-crisis deadline. Just delegates to
-// runResolveDamage, which flips the announce state + applies damage.
-// Idempotent — no-op if already resolved.
-export const announceCrisis = internalMutation({
-  args: {
-    sessionId: v.id("sessions"),
-    crisisIndex: v.number(),
-  },
-  handler: async (ctx, { sessionId, crisisIndex }) => {
-    const session = await ctx.db.get(sessionId);
-    if (!session) return;
-    if (session.crisisIndex !== crisisIndex) return;
-    if (session.damageResolved) return;
-    await runResolveDamage(ctx, sessionId);
-  },
-});
-
-// Pass #16: safety-net scheduler that force-resolves a crisis 15 seconds
-// after dealCrisisV13. No-op if damage is already resolved, if the session
-// has moved past this crisis, or if no crisis is active.
-export const forceResolveOn15s = internalMutation({
-  args: {
-    sessionId: v.id("sessions"),
-    crisisIndex: v.number(),
-  },
-  handler: async (ctx, { sessionId, crisisIndex }) => {
-    const session = await ctx.db.get(sessionId);
-    if (!session) return;
-    if (session.damageResolved) return;
-    if (session.crisisIndex !== crisisIndex) return;
-    await runResolveDamage(ctx, sessionId);
-  },
-});
+// Pass #30: announceCrisis and forceResolveOn15s removed. Damage no longer
+// auto-fires on a scheduler. resolveCrisisDamage (defined below) remains as
+// the manual HR force-resolve path.
 
 // Pass #14: Runs the actual damage allocation using player inputs gathered
 // during the pre-resolution window (Scout C2 choice, Anchor immunity, Citizen
@@ -1742,14 +1708,13 @@ async function runResolveDamage(
   if (session.damageResolved) return;
   if (!session.crisisIndex) return;
 
-  // Pass #18: flip the announce state the instant we start resolving damage.
-  // This runs whether we arrived here via the 10s scheduler (announceCrisis)
-  // OR an early maybeResolveCrisis call (all role inputs landed fast). Both
-  // paths MUST set chat mute + Diplomat timer + rebuild deadline + subPhase,
-  // otherwise the pre-crisis overlay stays up forever and the Diplomat game
-  // never starts.
+  // Pass #30: flip the announce state the instant we start resolving damage.
+  // Now reached only via maybeResolveCrisis (every shielder/pre-resolution
+  // role committed) or HR's manual resolveCrisisDamage. Sets chat mute +
+  // Diplomat timer + rebuild deadline + subPhase together; without these the
+  // pre-crisis overlay stays up forever and the Diplomat game never starts.
   if (session.crisisSubPhase === "pre") {
-    const REBUILD_MS = 90_000;
+    const REBUILD_MS = 120_000; // Pass #30: was 90_000
     await ctx.db.patch(sessionId, {
       crisisSubPhase: "announced",
       chatMutedUntil: Date.now() + 15_000,
@@ -1985,6 +1950,7 @@ async function maybeResolveCrisis(
 
   const scout = players.find(p => p.ability === "scout");
   const anchor = players.find(p => p.ability === "anchor");
+  const engineer = players.find(p => p.ability === "engineer");
   const citizens = players.filter(p => p.ability === "citizen");
   const conns = await ctx.db
     .query("connections")
@@ -2004,6 +1970,13 @@ async function maybeResolveCrisis(
   if (anchor) {
     const anchorHasConn = activeConns.some(c => c.fromSlotId === anchor._id || c.toSlotId === anchor._id);
     if (anchorHasConn && !session.anchorImmuneTarget) return;
+  }
+
+  // Pass #30: Engineer ready check. Engineer's pre-resolution action is C1
+  // only (pre-shield for the next crisis). In C2 the Engineer is post-
+  // resolution (rebuild-type picker), not gating.
+  if (engineer && session.crisisIndex === 1) {
+    if (!session.engineerShieldTarget) return;
   }
 
   // Citizens ready check
@@ -2144,6 +2117,9 @@ async function autoClearCrisisIfDone(
     crisisSubPhase: "cleared",
     rebuildDeadline: undefined,
     currentCrisisDamagedPairs: [],
+    // Pass #30: clear any unacknowledged Scout warning so it doesn't bleed
+    // into the next crisis.
+    scoutWarning: undefined,
   });
 }
 
@@ -2265,6 +2241,8 @@ export const checkCrisisClearance = mutation({
         crisisTargetReason: undefined,
         crisisSubPhase: "cleared",
         rebuildDeadline: undefined,
+        // Pass #30: clear any unacknowledged Scout warning here too.
+        scoutWarning: undefined,
       });
       return { cleared: true, nextState };
     }
@@ -2451,14 +2429,13 @@ export const updateCh3Position = mutation({
     const player = await ctx.db.get(playerId);
     if (!session || !player) throw new Error("Missing.");
     const slot = (session.ch3TargetSlots ?? []).find(s => s.slotId === player.ch3TargetSlotId);
-    // Pass #25: switch from per-axis ±5% (Pass #19) to Euclidean ≤12% radius.
-    // The 5% box was rejecting "roughly correct" placements that any reasonable
-    // player would call done. 12% Euclidean is slightly tighter than Ch1's 15
-    // (Ch3 has fewer, closer-packed slots on a circle and the shape matters
-    // more) but loose enough to accept honest placements.
+    // Pass #31: bump Euclidean tolerance from 12 to 18% radius. Pass #25's 12%
+    // was still rejecting honest "in the right neighborhood" placements on
+    // mobile drag with no snap-to-slot. Slots are spaced ~33%+ apart on the
+    // circle so an 18% radius can't accidentally satisfy a neighbor's slot.
     const dx = (slot?.x ?? 0) - x;
     const dy = (slot?.y ?? 0) - y;
-    const inSlot = slot ? Math.sqrt(dx * dx + dy * dy) <= 12 : false;
+    const inSlot = slot ? Math.sqrt(dx * dx + dy * dy) <= 18 : false;
     await ctx.db.patch(playerId, { x, y, ch3InTargetSlot: inSlot });
 
     // Auto-complete check: EVERY assigned target slot must have its assignee
@@ -2494,6 +2471,30 @@ export const updateCh3Position = mutation({
         await ctx.db.patch(sessionId, { hiddenPatternRevealed: true });
       }
     }
+  },
+});
+
+// Pass #31: HR escape hatch when Ch3 placement is technically correct but
+// validation refuses to flip (mobile drag imprecision, coordinate edge case,
+// or one player AFK off-slot). Flips hiddenPatternRevealed unconditionally
+// and stamps every assigned player ch3InTargetSlot=true so downstream
+// consumers stay consistent. Idempotent.
+export const forceCompleteCh3 = mutation({
+  args: { sessionId: v.id("sessions") },
+  handler: async (ctx, { sessionId }) => {
+    const session = await ctx.db.get(sessionId);
+    if (!session) return;
+    if (session.hiddenPatternRevealed) return;
+
+    const slots = session.ch3TargetSlots ?? [];
+    for (const s of slots) {
+      if (!s.assignedTo) continue;
+      const p = await ctx.db.get(s.assignedTo);
+      if (p && !p.ch3InTargetSlot) {
+        await ctx.db.patch(s.assignedTo, { ch3InTargetSlot: true });
+      }
+    }
+    await ctx.db.patch(sessionId, { hiddenPatternRevealed: true });
   },
 });
 

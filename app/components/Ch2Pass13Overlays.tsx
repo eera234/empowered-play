@@ -224,6 +224,14 @@ export default function Ch2Pass13Overlays({ sessionId, sessionCode, playerId, is
       c.damagedSidePlayerId === playerId
     );
     if (myConn) {
+      // Pass #30: in C2, the Engineer picks rebuildNewType post-damage. Don't
+      // reveal destruction to the victim until their type is set, otherwise
+      // they would see a stale fallback to the OLD type and start rebuilding
+      // wrong. C1 sets rebuildNewType server-side at damage-resolve time, so
+      // it's always present when this branch runs.
+      if (crisisIndex === 2 && !myConn.rebuildNewType) {
+        return <WaitingForResolution label="Standby. Engineer is choosing your rebuild type…" />;
+      }
       const isA = myConn.fromSlotId === playerId;
       const partnerId = isA ? myConn.toSlotId : myConn.fromSlotId;
       const partner = (players ?? []).find(p => p._id === partnerId);

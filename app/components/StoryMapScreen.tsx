@@ -26,6 +26,7 @@ import DiplomatUnmuteOverlay from "./DiplomatUnmuteOverlay";
 import Ch3IntroOverlay from "./Ch3IntroOverlay";
 import ConnectionBuildCard from "./ConnectionBuildCard";
 import ProtectionBanner from "./ProtectionBanner";
+import ScoutWarningOverlay from "./ScoutWarningOverlay";
 
 // ── Placement slots per theme (reused from CityMapScreen) ──
 interface PlacementSlot {
@@ -96,6 +97,7 @@ export default function StoryMapScreen() {
   );
   const moveDistrict = useMutation(api.game.moveDistrict);
   const updateCh3Position = useMutation(api.mapPhase.updateCh3Position);
+  const forceCompleteCh3 = useMutation(api.mapPhase.forceCompleteCh3);
   const advanceNewPhase = useMutation(api.game.advanceNewPhase);
   const removeConnection = useMutation(api.mapPhase.removeConnection);
   // Pass #21: dealCrisisV13 + dealCrisisCard no longer called from client.
@@ -122,9 +124,7 @@ export default function StoryMapScreen() {
   const declineConnection = useMutation(api.mapPhase.declineConnection);
   const uploadConnectionPhotoSide = useMutation(api.mapPhase.uploadConnectionPhotoSide);
   const markConnectionReady = useMutation(api.mapPhase.markConnectionReady);
-  const expireUnbuiltConnection = useMutation(api.mapPhase.expireUnbuiltConnection);
   const repairDamagedDistrict = useMutation(api.mapPhase.repairDamagedDistrict);
-  const broadcastScoutIntel = useMutation(api.mapPhase.broadcastScoutIntel);
   const useRelayPower = useMutation(api.mapPhase.useRelayPower);
   const useForesightPower = useMutation(api.mapPhase.useForesightPower);
   const markCh2Ready = useMutation(api.mapPhase.markCh2Ready);
@@ -239,11 +239,11 @@ export default function StoryMapScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, isFacilitator, sessionId, nonFac.length]);
 
-  // ── Ch1 ready-up + 45s placement countdown ──
+  // ── Ch1 ready-up + placement countdown ──
   // Players see a blocking briefing overlay on Ch1 entry. Dismissing it marks
   // them ready on the server. When every non-fac player is ready, the session
-  // anchors subPhaseDeadline to now+45s. Once that hits zero, drag is disabled
-  // and the facilitator's advance button enables.
+  // anchors subPhaseDeadline to now+CH1_PLACEMENT_SECONDS. Once that hits
+  // zero, drag is disabled and the facilitator's advance button enables.
   const ch1DeadlineSet = phase === "map_ch1" && !!session?.subPhaseDeadline;
   const [nowTick, setNowTick] = useState(() => Date.now());
   useEffect(() => {
@@ -675,7 +675,7 @@ export default function StoryMapScreen() {
     if (!sessionId) return;
     if (advanceInFlightRef.current) return;
     // Hard gate on Ch1: can't advance until all districts are placed OR the
-    // 45s timer has expired. Server auto-places any stragglers on the
+    // placement timer has expired. Server auto-places any stragglers on the
     // transition to Ch2, so the board is always fully populated afterward.
     if (phase === "map_ch1" && !allPlaced && !ch1Expired) return;
     advanceInFlightRef.current = true;
@@ -827,12 +827,28 @@ export default function StoryMapScreen() {
         />
       )}
 
-      {/* ═══ Pass #18: pre-crisis countdown banner ═══
-          Shown to everyone during the 10s window between DEAL CRISIS and the
-          crisis actually landing. Tells players that role actions are open. */}
-      {phase === "map_ch2" && session?.crisisSubPhase === "pre"
-        && session?.preCrisisDeadline && (
-        <PreCrisisCountdown deadline={session.preCrisisDeadline} />
+      {/* ═══ Pass #30: Scout's private warning to the targeted player ═══
+          Set by scoutChooseC1 when mode === "dm". Mounted only for the
+          recipient. Other players see nothing. */}
+      {phase === "map_ch2" && !isFacilitator && sessionId && playerId
+        && session?.scoutWarning?.targetPlayerId === playerId && (
+        <ScoutWarningOverlay
+          sessionId={sessionId}
+          playerId={playerId}
+          text={session.scoutWarning.text}
+        />
+      )}
+
+      {/* ═══ Pass #30: pre-crisis "waiting on" indicator ═══
+          Shown during the pre-resolution window. Damage no longer auto-fires
+          on a 10s timer; it lands only after every shielder/pre-resolution
+          role-holder commits. This banner names who the team is waiting on. */}
+      {phase === "map_ch2" && session?.crisisSubPhase === "pre" && sessionId && (
+        <PreCrisisWaitingOn
+          sessionId={sessionId}
+          players={(players ?? []).filter(p => !p.isFacilitator)}
+          session={session}
+        />
       )}
 
       {/* ═══ Pass #18: persistent "what to do next" banner for Ch2 players ═══ */}
@@ -940,7 +956,6 @@ export default function StoryMapScreen() {
               buildStartedAt={conn.buildStartedAt}
               myPhotoUploaded={myPhotoUploaded}
               partnerPhotoUploaded={partnerPhotoUploaded}
-              expired={!!conn.expiredAt}
               onReady={async () => {
                 try {
                   const r = await markConnectionReady({
@@ -969,12 +984,6 @@ export default function StoryMapScreen() {
                   }
                 } catch { toast("Upload failed. Try again."); }
               }}
-              onExpire={async () => {
-                try {
-                  await expireUnbuiltConnection({ connectionId: conn._id });
-                  toast("Time's up. Re-request to try again.");
-                } catch { /* idempotent; ignore */ }
-              }}
             />
           );
         })
@@ -983,31 +992,12 @@ export default function StoryMapScreen() {
       {/* Pass #18: Ch3 no longer has bridge-photo uploads. The pattern
           rearrange uses drag-only; no LEGO building in Ch3. */}
 
-      {/* ═══ Ch2: Scout Broadcast card ═══
-          Scout sees the upcoming crisis privately and can BROADCAST a warning
-          to team chat (replaces the old "tell them verbally" hack). */}
-      {phase === "map_ch2" && !isFacilitator && me?.ability === "scout" && session?.scoutPreview && playerId && sessionId && (() => {
-        const crisis = CRISIS_CARDS.find((c) => c.id === session.scoutPreview);
-        if (!crisis) return null;
-        return (
-          <ScoutBroadcastCard
-            crisisTitle={crisis.title}
-            crisisIcon={crisis.icon}
-            shortWarning={crisis.shortWarning}
-            onBroadcast={async () => {
-              try {
-                await broadcastScoutIntel({
-                  sessionId,
-                  scoutPlayerId: playerId,
-                  message: `${crisis.title} incoming. ${crisis.shortWarning}`,
-                });
-                toast("Intel broadcast to team chat.");
-                playSound("clue-sent");
-              } catch { toast("Broadcast failed."); }
-            }}
-          />
-        );
-      })()}
+      {/* Pass #28: removed the floating ScoutBroadcastCard. The inline Scout
+          Intel preview panel below (with the "OK, SEEN. ANNOUNCE TO TEAM"
+          button → confirmCrisisAnnounce) is the canonical Scout confirm UI;
+          a second floating button posting a chat message duplicated the
+          announce action and looked broken against the busy map background.
+          Scouts now warn the team verbally per the inline panel's copy. */}
 
       {/* ── Narration header: full when open, thin pinned strip once collapsed ── */}
       {chapterText && (narrationVisible ? (
@@ -1214,7 +1204,7 @@ export default function StoryMapScreen() {
                     await skipCh1ReadyGate({ sessionId });
                     toast(`Ch1 timer started (${CH1_PLACEMENT_SECONDS}s).`);
                   }}
-                  title="Force-start the 45s placement timer without waiting on stragglers"
+                  title={`Force-start the ${CH1_PLACEMENT_SECONDS}s placement timer without waiting on stragglers`}
                 >
                   SKIP READY GATE
                 </button>
@@ -1953,42 +1943,82 @@ export default function StoryMapScreen() {
           the announce, kicking the existing pre-crisis countdown for everyone. */}
       {isCh2 && isScout && scoutPreviewCard && !activeCrisis && (
         <div style={{
-          padding: "12px 16px",
-          borderTop: "1px solid rgba(79,195,247,.4)",
-          background: "linear-gradient(180deg, rgba(79,195,247,.18), rgba(79,195,247,.04))",
-          display: "flex", flexDirection: "column", gap: 10,
+          padding: "16px 18px 14px",
+          borderTop: "2px solid rgba(79,195,247,.55)",
+          background: "linear-gradient(180deg, rgba(79,195,247,.22), rgba(79,195,247,.06))",
+          display: "flex", flexDirection: "column", gap: 12,
           animation: "fadeIn .5s ease-out",
+          boxShadow: "inset 0 1px 0 rgba(255,255,255,.06)",
         }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {/* Scout-only intel header */}
+          <div style={{
+            display: "flex", alignItems: "center", gap: 8,
+            fontFamily: "'Black Han Sans', sans-serif",
+            fontSize: 11, letterSpacing: 2.5,
+            color: "var(--acc2)", textTransform: "uppercase",
+          }}>
+            <span style={{
+              width: 8, height: 8, borderRadius: 999,
+              background: "var(--acc2)",
+              boxShadow: "0 0 8px var(--acc2)",
+            }} />
+            Scout Intel {"\u00B7"} Incoming Crisis
+          </div>
+
+          {/* Crisis card preview: art + title + description + counterplay */}
+          <div style={{
+            display: "flex", alignItems: "flex-start", gap: 14,
+            padding: "12px 14px",
+            background: "rgba(0,0,0,.35)",
+            border: "1px solid rgba(79,195,247,.3)",
+            borderRadius: 10,
+          }}>
             <div style={{ flexShrink: 0 }}>
-              {(() => { const Art = getCrisisIllustration(scoutPreviewCard.id); return <Art size={52} />; })()}
+              {(() => { const Art = getCrisisIllustration(scoutPreviewCard.id); return <Art size={64} />; })()}
             </div>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{
-                fontFamily: "'Black Han Sans', sans-serif", fontSize: 10, letterSpacing: 2,
-                color: "var(--acc2)", textTransform: "uppercase",
-              }}>
-                Scout Intel {"\u00B7"} Incoming
-              </div>
-              <div style={{
-                fontFamily: "'Black Han Sans', sans-serif", fontSize: 15, letterSpacing: 1,
-                color: "white", marginTop: 2,
+                fontFamily: "'Black Han Sans', sans-serif",
+                fontSize: 18, letterSpacing: 1.2,
+                color: "white", lineHeight: 1.2,
               }}>
                 {scoutPreviewCard.title}
               </div>
-              <div style={{ fontSize: 11, color: "var(--textd)", marginTop: 3, lineHeight: 1.4 }}>
+              <div style={{
+                fontSize: 13, color: "rgba(255,255,255,.85)",
+                marginTop: 6, lineHeight: 1.5,
+              }}>
                 {scoutPreviewCard.description}
               </div>
-              <div style={{ fontSize: 10, color: "var(--acc4)", marginTop: 4, fontStyle: "italic" }}>
-                Only you can see this. Warn the team without naming the card.
-              </div>
+              {scoutPreviewCard.counterplay && (
+                <div style={{
+                  fontSize: 11, color: "var(--acc4)",
+                  marginTop: 8, fontStyle: "italic", lineHeight: 1.4,
+                }}>
+                  Counter: {scoutPreviewCard.counterplay}
+                </div>
+              )}
             </div>
           </div>
+
+          {/* Secrecy hint */}
+          <div style={{
+            fontSize: 11.5, color: "rgba(255,255,255,.7)",
+            lineHeight: 1.5, padding: "0 2px",
+          }}>
+            Only you can see this. Warn the team verbally without naming the card.
+            When ready, announce it to start the crisis.
+          </div>
+
+          {/* Confirm button (lighter weight than before) */}
           <button
             className="lb lb-yellow"
             style={{
-              alignSelf: "stretch", fontSize: 12, padding: "10px 14px",
-              fontWeight: 800, letterSpacing: 1.5,
+              alignSelf: "stretch",
+              fontSize: 13,
+              padding: "12px 16px",
+              letterSpacing: 1.2,
+              marginTop: 2,
             }}
             onClick={async () => {
               if (!sessionId) return;
@@ -1999,7 +2029,7 @@ export default function StoryMapScreen() {
               }
             }}
           >
-            OK, SEEN. ANNOUNCE TO TEAM
+            ANNOUNCE TO TEAM {"\u2192"}
           </button>
         </div>
       )}
@@ -2228,7 +2258,7 @@ export default function StoryMapScreen() {
                 {session?.pendingCrisisCardId ? (
                   <button
                     className="lb lb-yellow"
-                    style={{ fontSize: 12, padding: "9px 16px", fontWeight: 800, letterSpacing: 1.5 }}
+                    style={{ fontSize: 12, padding: "9px 16px", letterSpacing: 1.2 }}
                     onClick={handleAnnounceNow}
                     title="Skip Scout ack and announce the crisis now"
                   >
@@ -2271,10 +2301,10 @@ export default function StoryMapScreen() {
                   </button>
                 )}
                 {/* Pass #18: BLACKOUT button removed. Only dealt crises mute chat. */}
-                {/* Pass #18: FORCE RESOLVE and CLEAR CRISIS buttons removed.
-                    Damage lands automatically at the pre-crisis deadline via
-                    the announceCrisis scheduler. Crisis auto-dismisses as
-                    soon as all present players have acted + rebuilt. No
+                {/* Pass #30: FORCE RESOLVE and CLEAR CRISIS buttons removed.
+                    Damage lands once every shielder/pre-resolution role
+                    commits (no more 10s auto-fire). Crisis auto-dismisses
+                    when every present player has acted + rebuilt. No
                     facilitator taps needed. */}
                 {!canAdvance && (
                   <span style={{ fontSize: 10, color: "var(--textdd)", fontStyle: "italic" }}>
@@ -2293,7 +2323,7 @@ export default function StoryMapScreen() {
           {/* Pass #17: testing-only [DEV] skip for Chapter 1. Snaps every
               district into its correct slot, then advances to Ch2. This is
               NOT the same as the Ch1-timer auto-place (which fires on its
-              own at the 45s deadline via a server scheduler). */}
+              own at the CH1_PLACEMENT_SECONDS deadline via a server scheduler). */}
           {isFacilitator && phase === "map_ch1" && (
             <button
               className="lb"
@@ -2320,6 +2350,30 @@ export default function StoryMapScreen() {
               auto-flips when every player lands in their slot. The advance
               button below is renamed to START VOTING for Ch3 and disabled
               until the pattern is complete. */}
+          {/* Pass #31: HR escape hatch when Ch3 placement validation refuses
+              to flip. Visible only in Ch3 to facilitators; disabled once the
+              pattern is already revealed. */}
+          {isFacilitator && isCh3 && (
+            <button
+              className="lb lb-yellow"
+              style={{
+                fontSize: 11,
+                padding: "8px 12px",
+                opacity: mapRebuilt ? 0.4 : 1,
+                cursor: mapRebuilt ? "not-allowed" : "pointer",
+                border: "1.5px solid rgba(255,215,64,.7)",
+              }}
+              disabled={mapRebuilt || !sessionId}
+              onClick={async () => {
+                if (!sessionId || mapRebuilt) return;
+                await forceCompleteCh3({ sessionId });
+                toast("Pattern force-completed. Map rebuilt.");
+              }}
+              title="Override the placement check and reveal the rebuilt map. Use if validation is stuck."
+            >
+              FORCE COMPLETE
+            </button>
+          )}
           {isFacilitator ? (() => {
             const ch1Blocked = phase === "map_ch1" && !allPlaced && !ch1Expired;
             const ch3Blocked = isCh3 && !mapRebuilt;
@@ -2330,9 +2384,9 @@ export default function StoryMapScreen() {
                 ? "ADVANCE TO CH 3 \u2192"
                 : "START VOTING \u2192";
             const blockedTitle = ch1Blocked
-              ? "Wait for all players to place their districts or the 45s timer to expire."
+              ? `Wait for all players to place their districts or the ${CH1_PLACEMENT_SECONDS}s timer to expire.`
               : ch3Blocked
-                ? "Wait for every player to land their district in the glowing slot."
+                ? "Wait for every player to land their district in the glowing slot, or tap FORCE COMPLETE to override."
                 : undefined;
             return (
               <button
@@ -2504,15 +2558,63 @@ export default function StoryMapScreen() {
 //  Pass #18: Pre-crisis countdown banner
 //  Shown for the 10s window between DEAL CRISIS and the crisis landing.
 // ─────────────────────────────────────────────────────────────
-function PreCrisisCountdown({ deadline }: { deadline: number }) {
-  const [now, setNow] = useState<number>(Date.now());
-  useEffect(() => {
-    const i = window.setInterval(() => setNow(Date.now()), 200);
-    return () => window.clearInterval(i);
-  }, []);
-  const remaining = Math.max(0, deadline - now);
-  if (remaining <= 0) return null;
-  const seconds = Math.ceil(remaining / 1000);
+function PreCrisisWaitingOn({
+  sessionId,
+  players,
+  session,
+}: {
+  sessionId: Id<"sessions">;
+  players: Array<{ _id: Id<"players">; name: string; ability?: string }>;
+  session: {
+    crisisIndex?: number;
+    scoutC1Choice?: string;
+    scoutC2Choice?: string;
+    anchorImmuneTarget?: Id<"players"> | string;
+    engineerShieldTarget?: Id<"players"> | string;
+  };
+}) {
+  const crisisIndex = session.crisisIndex ?? 1;
+  const votes = useQuery(api.mapPhase.getCitizenVotes, { sessionId, crisisIndex });
+  const connections = useQuery(api.mapPhase.getConnections, { sessionId });
+
+  const waitingOn: string[] = [];
+
+  const scout = players.find((p) => p.ability === "scout");
+  if (scout) {
+    const scoutReady = crisisIndex === 1 ? !!session.scoutC1Choice : !!session.scoutC2Choice;
+    if (!scoutReady) waitingOn.push(`${scout.name} (Scout)`);
+  }
+
+  const anchor = players.find((p) => p.ability === "anchor");
+  if (anchor) {
+    const activeConns = (connections ?? []).filter(
+      (c) => !c.destroyedByCrisisIndex || c.destroyedByCrisisIndex === 0,
+    );
+    const anchorHasConn = activeConns.some(
+      (c) => c.fromSlotId === anchor._id || c.toSlotId === anchor._id,
+    );
+    if (anchorHasConn && !session.anchorImmuneTarget) {
+      waitingOn.push(`${anchor.name} (Anchor)`);
+    }
+  }
+
+  const engineer = players.find((p) => p.ability === "engineer");
+  if (engineer && crisisIndex === 1 && !session.engineerShieldTarget) {
+    waitingOn.push(`${engineer.name} (Engineer)`);
+  }
+
+  const citizens = players.filter((p) => p.ability === "citizen");
+  if (citizens.length > 0 && (votes ?? []).length < citizens.length) {
+    const voted = new Set((votes ?? []).map((v) => v.voterId as unknown as string));
+    for (const c of citizens) {
+      if (!voted.has(c._id as unknown as string)) {
+        waitingOn.push(`${c.name} (Citizen)`);
+      }
+    }
+  }
+
+  if (waitingOn.length === 0) return null;
+
   return (
     <div
       style={{
@@ -2526,34 +2628,19 @@ function PreCrisisCountdown({ deadline }: { deadline: number }) {
         border: "1px solid rgba(244,67,54,.5)",
         display: "flex",
         alignItems: "center",
-        justifyContent: "space-between",
         gap: 10,
         color: "white",
         boxShadow: "0 4px 14px rgba(244,67,54,.28)",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <span style={{ fontSize: 18 }}>{"\u26A0\uFE0F"}</span>
-        <div>
-          <div style={{ fontFamily: "'Black Han Sans', sans-serif", fontSize: 12, letterSpacing: 1.5 }}>
-            CRISIS INCOMING
-          </div>
-          <div style={{ fontSize: 11, color: "rgba(255,255,255,.78)" }}>
-            Role actions are open. Take yours now if you have one.
-          </div>
+      <span style={{ fontSize: 18 }}>{"\u26A0\uFE0F"}</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontFamily: "'Black Han Sans', sans-serif", fontSize: 12, letterSpacing: 1.5 }}>
+          CRISIS PENDING
         </div>
-      </div>
-      <div
-        style={{
-          fontFamily: "'Black Han Sans', sans-serif",
-          fontSize: 26,
-          letterSpacing: 1,
-          color: seconds <= 3 ? "#FF5252" : "#FFD740",
-          minWidth: 48,
-          textAlign: "right",
-        }}
-      >
-        {seconds}s
+        <div style={{ fontSize: 11, color: "rgba(255,255,255,.85)", marginTop: 2 }}>
+          Waiting on: {waitingOn.join(", ")}
+        </div>
       </div>
     </div>
   );
@@ -2841,58 +2928,3 @@ function PendingConnectionBanner({
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-//  Ch2 Scout Broadcast Card
-// ─────────────────────────────────────────────────────────────
-function ScoutBroadcastCard({
-  crisisTitle, crisisIcon, shortWarning, onBroadcast,
-}: {
-  crisisTitle: string;
-  crisisIcon: string;
-  shortWarning: string;
-  onBroadcast: () => Promise<void>;
-}) {
-  const [sent, setSent] = useState(false);
-  async function handle() {
-    if (sent) return;
-    await onBroadcast();
-    setSent(true);
-  }
-  return (
-    <div style={{
-      position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)",
-      width: "min(460px, 92vw)",
-      background: "linear-gradient(180deg, rgba(255,215,0,.12), var(--bg1))",
-      border: "2px solid var(--acc1)",
-      borderRadius: "var(--brick-radius)",
-      padding: "12px 14px", zIndex: 700,
-      boxShadow: "0 8px 22px rgba(0,0,0,.55)",
-    }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-        <span style={{ fontSize: 24 }}>{"\u{1F52D}"}</span>
-        <div style={{ flex: 1 }}>
-          <div style={{
-            fontFamily: "'Black Han Sans', sans-serif", fontSize: 10, letterSpacing: 2,
-            color: "var(--acc1)", textTransform: "uppercase",
-          }}>
-            Scout Intel {"\u00B7"} private to you
-          </div>
-          <div style={{ fontSize: 13, color: "white", marginTop: 2 }}>
-            {crisisIcon} <strong>{crisisTitle}</strong> is incoming.
-          </div>
-          <div style={{ fontSize: 11, color: "var(--textd)", marginTop: 2, fontStyle: "italic" }}>
-            {shortWarning}
-          </div>
-        </div>
-      </div>
-      <button
-        className={sent ? "lb lb-ghost" : "lb lb-yellow"}
-        disabled={sent}
-        onClick={handle}
-        style={{ width: "100%", padding: "9px 0", fontSize: 11, letterSpacing: 2 }}
-      >
-        {sent ? "\u2713 BROADCAST" : "\u{1F4E2} BROADCAST WARNING TO TEAM"}
-      </button>
-    </div>
-  );
-}

@@ -46,23 +46,26 @@ function btn(variant: "primary" | "ghost" | "danger" = "primary"): React.CSSProp
     marginTop: 10,
     borderRadius: 10,
     fontSize: 14,
-    fontWeight: 900,
+    fontWeight: 800,
     letterSpacing: 1,
     textTransform: "uppercase",
     cursor: "pointer",
     fontFamily: "'Nunito', sans-serif",
+    // Pass #30: ghost variant was white text on a near-white tint — washed
+    // out against the modal's dark backdrop. Switch to a clearly dark fill
+    // so white text reads cleanly. Primary/danger already had enough tint.
     background:
       variant === "primary" ? "rgba(255,215,0,.22)"
       : variant === "danger" ? "rgba(244,67,54,.22)"
-      : "rgba(255,255,255,.08)",
+      : "rgba(20,22,42,.85)",
     border:
       variant === "primary" ? "2px solid rgba(255,215,0,.85)"
       : variant === "danger" ? "2px solid rgba(244,67,54,.85)"
-      : "2px solid rgba(255,255,255,.45)",
+      : "2px solid rgba(255,255,255,.35)",
     color:
       variant === "primary" ? "var(--acc1, #FFD700)"
       : variant === "danger" ? "#FF8A80"
-      : "rgba(255,255,255,.95)",
+      : "white",
   };
 }
 

@@ -1001,9 +1001,9 @@ export const HIDDEN_PATTERNS: HiddenPattern[] = [
 // Synced timing for the 3 clue rounds during pair_build phase.
 
 export const PAIR_BUILD_ROUNDS = [
-  { round: 1, clueSeconds: 45, buildSeconds: 180, reviewSeconds: 30, label: "First Clue" },
-  { round: 2, clueSeconds: 30, buildSeconds: 120, reviewSeconds: 30, label: "Second Clue" },
-  { round: 3, clueSeconds: 30, buildSeconds: 120, reviewSeconds: 0,  label: "Final Clue" },
+  { round: 1, clueSeconds: 120, buildSeconds: 300, reviewSeconds: 30, label: "First Clue" },
+  { round: 2, clueSeconds: 120, buildSeconds: 300, reviewSeconds: 30, label: "Second Clue" },
+  { round: 3, clueSeconds: 120, buildSeconds: 300, reviewSeconds: 0,  label: "Final Clue" },
 ] as const;
 
 // ── Map Connection Timing ────────────────────────────────────
@@ -1029,7 +1029,7 @@ export function ch3Seconds(playerCount: number): number {
 // Back-compat constant: some modules still import the old name; keep it as the
 // 3-player value so references don't break while we migrate callers.
 export const CONNECTION_BUILD_SECONDS_CH3 = ch3Seconds(3);
-export const CH1_PLACEMENT_SECONDS = 45;         // Ch1 placement sprint: 45s after the last non-fac player taps ready
+export const CH1_PLACEMENT_SECONDS = 120;        // Ch1 placement sprint: 120s after the last non-fac player taps ready
 
 // ── Ch1 auto-place fallback data ───────────────────────────
 // Shared by server (autoPlaceUnplaced) and client (StoryMapScreen). Just id
@@ -1085,7 +1085,7 @@ export const CH1_SLOT_POSITIONS: Record<string, SlotPos[]> = {
 
 // ── Ch1 riddles ────────────────────────────────────────────
 // One per slot per scenario. Each riddle points at the zone without naming
-// it; the player has 45 seconds to figure out which zone on the map fits.
+// it; the player has 120 seconds to figure out which zone on the map fits.
 // Voice follows the scenario: city = civic/architectural, space =
 // orbital/mechanical, ocean = pressure/current, forest = canopy/root.
 export const CH1_SLOT_RIDDLES: Record<string, Record<string, string>> = {
@@ -1329,9 +1329,11 @@ export function getConnectionTypesForTheme(theme: string): ConnectionType[] {
   return CONNECTION_TYPES[theme] ?? CONNECTION_TYPES.water;
 }
 
-// Per-connection build timer (seconds after accept before connection auto-deletes
-// if both photos not uploaded).
-export const PER_CONNECTION_BUILD_SECONDS = 90;
+// Per-connection build timer (seconds after both sides ready before the
+// timer hits zero). Pass #29: bumped 90 to 120s. After zero, the card no
+// longer locks: a force-upload CTA appears and uploads still go through.
+// The connection becomes "built" only when both sides have uploaded.
+export const PER_CONNECTION_BUILD_SECONDS = 120;
 
 // Diplomat unmute mini-game timing.
 export const DIPLOMAT_UNMUTE_TOTAL_MS = 15_000;

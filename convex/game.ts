@@ -399,9 +399,10 @@ export const advanceNewPhase = mutation({
       }
     } else if (nextPhase === "map_ch1") {
       // Entering Ch1: reset every non-fac ch1Ready flag so the briefing overlay
-      // re-shows, and leave subPhaseDeadline undefined. The 45s placement timer
-      // is gated on every non-fac player tapping ready (markCh1Ready); the
-      // last tap anchors the deadline. Same pattern as pair_build entry above.
+      // re-shows, and leave subPhaseDeadline undefined. The placement timer
+      // (CH1_PLACEMENT_SECONDS) is gated on every non-fac player tapping ready
+      // (markCh1Ready); the last tap anchors the deadline. Same pattern as
+      // pair_build entry above.
       patch.buildSubPhase = undefined;
       patch.buildStage = undefined;
       patch.subPhaseDeadline = undefined;
@@ -675,8 +676,9 @@ export const markPairBuildReady = mutation({
 });
 
 // Player marks themselves ready after reading the Ch1 briefing overlay. When
-// the last non-fac player taps ready, the 45s placement timer starts for the
-// whole session. Idempotent: safe to call more than once per player.
+// the last non-fac player taps ready, the placement timer
+// (CH1_PLACEMENT_SECONDS) starts for the whole session. Idempotent: safe to
+// call more than once per player.
 export const markCh1Ready = mutation({
   args: { playerId: v.id("players") },
   handler: async (ctx, { playerId }) => {
@@ -715,8 +717,9 @@ export const markCh1Ready = mutation({
   },
 });
 
-// Facilitator escape hatch for Ch1: force-start the 45s placement timer even
-// if a player hasn't tapped ready. No-op if the timer is already running.
+// Facilitator escape hatch for Ch1: force-start the placement timer
+// (CH1_PLACEMENT_SECONDS) even if a player hasn't tapped ready. No-op if the
+// timer is already running.
 export const skipCh1ReadyGate = mutation({
   args: { sessionId: v.id("sessions") },
   handler: async (ctx, { sessionId }) => {

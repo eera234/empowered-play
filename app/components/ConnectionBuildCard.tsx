@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import ConnectionTypeArt, { ConnectionTypeKind } from "./ConnectionTypeArt";
 import InAppCamera from "./InAppCamera";
+import { PER_CONNECTION_BUILD_SECONDS } from "../../lib/constants";
 
 type Theme = "water" | "space" | "ocean" | "forest";
 
@@ -19,69 +20,66 @@ export interface ConnectionBuildCardProps {
   buildStartedAt: number | undefined;
   myPhotoUploaded: boolean;
   partnerPhotoUploaded: boolean;
-  expired: boolean;
   // callbacks
   onReady: () => Promise<void> | void;
   onPhotoCaptured: (dataUrl: string) => Promise<void> | void;
-  onExpire: () => Promise<void> | void;
 }
 
 // Full-lifecycle card shown for each non-built connection a player is on.
 // Phases:
 //   (1) Type reveal + ready gate — both sides tap "I'm ready to build".
-//   (2) 90s build window — camera button, countdown, waiting state.
-//   (3) Expiry — re-request instructions.
+//   (2) Build window — countdown + camera. Pass #29: when the timer hits
+//       zero, the card stays mounted and a red "TIME'S UP" CTA appears;
+//       uploads still go through, the connection is built when both sides
+//       have a photo in.
 // Parent filters out built rows; this card never renders for built=true.
 export default function ConnectionBuildCard(p: ConnectionBuildCardProps) {
   const {
     partnerName, typeId, typeLabel, typeHint, theme,
     amSideA, aReady, bReady, buildStartedAt,
-    myPhotoUploaded, partnerPhotoUploaded, expired,
-    onReady, onPhotoCaptured, onExpire,
+    myPhotoUploaded, partnerPhotoUploaded,
+    onReady, onPhotoCaptured,
   } = p;
 
   const myReady = amSideA ? aReady : bReady;
   const theirReady = amSideA ? bReady : aReady;
   const [cameraOpen, setCameraOpen] = useState(false);
 
-  // 90s countdown after buildStartedAt is stamped. Ticks every 250ms.
+  // Countdown after buildStartedAt is stamped. Ticks every 250ms. Stops
+  // ticking once the deadline is past — the force-CTA below handles the
+  // post-zero state, no need to keep re-rendering the timer.
   const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!buildStartedAt || expired) return;
-    const id = window.setInterval(() => setNow(Date.now()), 250);
-    return () => window.clearInterval(id);
-  }, [buildStartedAt, expired]);
-
-  const deadline = buildStartedAt ? buildStartedAt + 90_000 : undefined;
+  const buildMs = PER_CONNECTION_BUILD_SECONDS * 1000;
+  const deadline = buildStartedAt ? buildStartedAt + buildMs : undefined;
   const msLeft = deadline ? Math.max(0, deadline - now) : undefined;
   const secondsLeft = msLeft !== undefined ? Math.ceil(msLeft / 1000) : undefined;
-
-  // Fire the expire mutation exactly once when we cross zero with no uploads.
-  const firedExpireRef = React.useRef(false);
   useEffect(() => {
-    if (
-      !firedExpireRef.current
-      && msLeft === 0
-      && !myPhotoUploaded
-      && !partnerPhotoUploaded
-      && !expired
-    ) {
-      firedExpireRef.current = true;
-      Promise.resolve(onExpire()).catch(() => {});
-    }
-  }, [msLeft, myPhotoUploaded, partnerPhotoUploaded, expired, onExpire]);
+    if (!buildStartedAt) return;
+    if (msLeft === 0) return;
+    const id = window.setInterval(() => setNow(Date.now()), 250);
+    return () => window.clearInterval(id);
+  }, [buildStartedAt, msLeft]);
 
-  // ─── Expired view ───
-  if (expired) {
-    return (
-      <Shell tone="danger">
-        <Header label={typeLabel} partnerName={partnerName} tag="EXPIRED" tagTone="danger" />
-        <p style={bodyText}>
-          Time&rsquo;s up on this bridge. Tap your district, then your partner&rsquo;s, to request a new attempt.
-        </p>
-      </Shell>
-    );
-  }
+  // Pass #29: deadline expiry is a UI signal, NOT a server-side lock. Flip
+  // a flag so the force-CTA banner renders; the upload flow stays mounted
+  // and uploads still go through past zero. Reset on buildStartedAt change
+  // so a re-request (different timestamp) starts cleanly.
+  const expiredHandledRef = useRef(false);
+  const [deadlineExpired, setDeadlineExpired] = useState(false);
+  useEffect(() => {
+    setDeadlineExpired(false);
+    expiredHandledRef.current = false;
+    if (!buildStartedAt) return;
+    const fire = () => {
+      if (expiredHandledRef.current) return;
+      expiredHandledRef.current = true;
+      setDeadlineExpired(true);
+    };
+    const remaining = (buildStartedAt + buildMs) - Date.now();
+    if (remaining <= 0) { fire(); return; }
+    const t = setTimeout(fire, remaining);
+    return () => clearTimeout(t);
+  }, [buildStartedAt, buildMs]);
 
   // ─── Phase 1: ready gate ───
   if (!buildStartedAt) {
@@ -120,20 +118,25 @@ export default function ConnectionBuildCard(p: ConnectionBuildCardProps) {
         )}
 
         <div style={helperText}>
-          When both partners tap ready, a 90-second timer starts and the camera unlocks on both sides.
+          When both partners tap ready, a 2-minute timer starts and the camera unlocks on both sides.
         </div>
       </Shell>
     );
   }
 
   // ─── Phase 2: build window ───
+  const fmtMMSS = (totalSec: number) => {
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    return `${m}:${String(s).padStart(2, "0")}`;
+  };
   const timerLabel = secondsLeft !== undefined
-    ? `0:${String(secondsLeft).padStart(2, "0")}`
-    : "0:90";
-  const urgent = (secondsLeft ?? 90) <= 15;
+    ? fmtMMSS(secondsLeft)
+    : fmtMMSS(PER_CONNECTION_BUILD_SECONDS);
+  const urgent = (secondsLeft ?? PER_CONNECTION_BUILD_SECONDS) <= 15;
   const timerColor = urgent ? "#ff5555" : "var(--acc1, #FFD700)";
   const progressPct = msLeft !== undefined
-    ? Math.max(0, Math.min(100, (msLeft / 90_000) * 100))
+    ? Math.max(0, Math.min(100, (msLeft / buildMs) * 100))
     : 100;
 
   return (
@@ -198,6 +201,25 @@ export default function ConnectionBuildCard(p: ConnectionBuildCardProps) {
         <div style={pairDivider} aria-hidden="true" />
         <UploadPill label={partnerName} uploaded={partnerPhotoUploaded} truncate />
       </div>
+
+      {/* Pass #29: post-deadline force-CTA. Same shape as PairBuildScreen. */}
+      {deadlineExpired && !myPhotoUploaded && (
+        <div
+          style={{
+            marginBottom: 12, padding: "10px 14px",
+            background: "rgba(255,90,60,.12)", border: "1px solid rgba(255,90,60,.45)",
+            borderRadius: 8, color: "#ff9e80",
+            fontSize: 12, fontWeight: 800, letterSpacing: 1, lineHeight: 1.5,
+          }}
+        >
+          TIME{"’"}S UP. Take a photo and upload it now to keep the game moving.
+        </div>
+      )}
+      {deadlineExpired && myPhotoUploaded && !partnerPhotoUploaded && (
+        <div style={{ marginBottom: 12, fontSize: 11, color: "var(--textd)", letterSpacing: 1 }}>
+          Time{"’"}s up. Waiting for: <span style={{ color: "var(--acc1)", fontWeight: 800 }}>{partnerName}</span>
+        </div>
+      )}
 
       {myPhotoUploaded ? (
         <div style={statusBox}>

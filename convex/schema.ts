@@ -81,6 +81,14 @@ export default defineSchema({
     scoutC1Choice: v.optional(v.string()),          // "dm" | "public" | null
     scoutC1Target: v.optional(v.id("players")),     // if scout chose DM
     scoutC2Choice: v.optional(v.string()),          // "reveal" | "protect" | null
+    // Pass #30: Scout's "DM" choice now delivers the warning as a private
+    // fullscreen modal to the target player only (no chat row). Cleared when
+    // the recipient acknowledges or when the crisis clears.
+    scoutWarning: v.optional(v.object({
+      targetPlayerId: v.id("players"),
+      text: v.string(),
+      at: v.number(),
+    })),
     engineerShieldTarget: v.optional(v.id("players")), // C1 pre-shield for C2
     anchorImmuneTarget: v.optional(v.id("players")),   // the connected player whose district is immune this crisis
     menderHealed: v.optional(v.id("players")),         // the player whose connection was healed this crisis (one of the damaged)
@@ -136,6 +144,8 @@ export default defineSchema({
     rebuildDeadline: v.optional(v.number()),
     // Pass #18: absolute ms deadline for the pre-crisis window. Client reads
     // for the countdown overlay. Cleared when the server fires announceCrisis.
+    // Pass #30: deprecated. Damage now blocks until every shielder commits;
+    // we no longer write this field. Kept optional for backward compat.
     preCrisisDeadline: v.optional(v.number()),
   }).index("by_code", ["code"]),
 
@@ -161,7 +171,7 @@ export default defineSchema({
     targetZone: v.optional(v.string()),          // Ch1 target-zone slot id the player should place their district near
     ch1Placed: v.optional(v.boolean()),          // true once the player's x/y is within tolerance of targetZone
     pairBuildReady: v.optional(v.boolean()),     // true once the player has dismissed the pair-build intro explainer
-    ch1Ready: v.optional(v.boolean()),           // true once the player has dismissed the Ch1 briefing. When all non-fac players are ready, the 45s placement timer starts
+    ch1Ready: v.optional(v.boolean()),           // true once the player has dismissed the Ch1 briefing. When all non-fac players are ready, the placement timer (CH1_PLACEMENT_SECONDS) starts
     shielded: v.optional(v.boolean()),           // set by Shield power card, consumed by the next crisis affecting this player
     ch2Ready: v.optional(v.boolean()),           // true once the player dismisses the Ch2 onboarding card
     districtDamaged: v.optional(v.boolean()),    // set by a Ch2 crisis. Player must re-upload their district photo to clear.
@@ -266,13 +276,15 @@ export default defineSchema({
     // cleared on rebuild auto-complete. Only this player is prompted to
     // upload the connection rebuild photo; the partner does nothing.
     damagedSidePlayerId: v.optional(v.id("players")),
-    // ── Pass #16: connection-build ready-gate + 90s simultaneous timer ──
+    // ── Pass #16 + #29: connection-build ready-gate + simultaneous timer ──
     // acceptConnection stamps typeRevealedAt so both players see the type
     // "now." Each side independently taps "I am ready to build" to flip
-    // aReady/bReady. When both are true buildStartedAt is set; the 90s build
-    // window begins on both devices. uploadConnectionPhotoSide is rejected
-    // until buildStartedAt is set and before it + 90_000. Once both photos
-    // land built flips true. expiredAt is set if neither photo arrives in time.
+    // aReady/bReady. When both are true buildStartedAt is set; the
+    // PER_CONNECTION_BUILD_SECONDS countdown begins on both devices.
+    // Pass #29: timer-zero is a UI signal only (force-CTA banner); uploads
+    // still go through past zero, so uploadConnectionPhotoSide is rejected
+    // only until buildStartedAt is set. Once both photos land built flips
+    // true. expiredAt is no longer set automatically (latent for HR force-skip).
     typeRevealedAt: v.optional(v.number()),
     aReady: v.optional(v.boolean()),
     bReady: v.optional(v.boolean()),

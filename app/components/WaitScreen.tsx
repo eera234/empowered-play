@@ -213,41 +213,26 @@ export default function WaitScreen() {
               YOUR ROLE
             </div>
             {myAbility && (
-              <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 12,
-                padding: "10px 12px", borderRadius: 8,
+              <div style={{ marginTop: 10, display: "flex", flexDirection: "column", alignItems: "center", gap: 10,
+                padding: "16px 12px", borderRadius: 8,
                 background: `${abilityColor}15`,
                 border: `1px solid ${abilityColor}33`,
               }}>
-                <AbilityBadge ability={myAbility} size={56} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 900, color: abilityColor || "white" }}>
-                    {myAbility.label}
-                  </div>
-                  <div style={{ fontSize: 11, color: "var(--textd)", lineHeight: 1.4 }}>
-                    {myAbility.description}
-                  </div>
-                  {myAbility.descriptionC1 && (
-                    <div style={{ fontSize: 11, color: "var(--textd)", lineHeight: 1.4, marginTop: 4, opacity: 0.9 }}>
-                      {myAbility.descriptionC1}
-                    </div>
-                  )}
+                <AbilityBadge ability={myAbility} size={140} />
+                <div style={{ fontSize: 18, fontWeight: 900, color: abilityColor || "white", letterSpacing: 0.5 }}>
+                  {myAbility.label}
                 </div>
               </div>
             )}
             {!myAbility && (
-              <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 12,
-                padding: "10px 12px", borderRadius: 8,
+              <div style={{ marginTop: 10, display: "flex", flexDirection: "column", alignItems: "center", gap: 10,
+                padding: "16px 12px", borderRadius: 8,
                 background: "rgba(108,122,153,.15)",
                 border: "1px solid rgba(108,122,153,.33)",
               }}>
-                <AbilityBadge ability={null} size={56} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 900, color: "#9aa6c2" }}>
-                    Citizen
-                  </div>
-                  <div style={{ fontSize: 11, color: "var(--textd)", lineHeight: 1.4 }}>
-                    You hold the map together and keep every connection alive.
-                  </div>
+                <AbilityBadge ability={null} size={140} />
+                <div style={{ fontSize: 18, fontWeight: 900, color: "#9aa6c2", letterSpacing: 0.5 }}>
+                  Citizen
                 </div>
               </div>
             )}

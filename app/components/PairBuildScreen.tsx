@@ -332,39 +332,44 @@ export default function PairBuildScreen() {
     if (chatMsgsRef.current) chatMsgsRef.current.scrollTop = chatMsgsRef.current.scrollHeight;
   }, [archMsgs?.length, buildMsgs?.length]);
 
-  // ── Auto-advance when timer expires ──
-  // Guard ref prevents multiple calls from the same client for the same (round, stage).
-  // Server-side fromRound+fromStage guard prevents races across clients.
-  const advancedForKeyRef = useRef<string | null>(null);
+  // ── Deadline expiry: UI signal only (Pass #26) ──
+  // The round no longer auto-advances on timer zero. Instead we flip
+  // `deadlineExpired` true so the screen can render a force-submit CTA, and
+  // we still rescue any captured-but-unsent photo (a fairly common case
+  // where a builder shoots the photo at 0:01 and never taps upload). Actual
+  // advancement happens server-side when the last sendClue / uploadBuildPhoto
+  // for the round lands.
+  const expiredHandledForKeyRef = useRef<string | null>(null);
+  const [deadlineExpired, setDeadlineExpired] = useState(false);
   useEffect(() => {
     const deadline = session?.subPhaseDeadline;
-    if (!sessionId || !deadline || session?.phase !== "pair_build") return;
+    if (!sessionId || !deadline || session?.phase !== "pair_build") {
+      setDeadlineExpired(false);
+      return;
+    }
     const roundAtStart = currentRound;
     const stageAtStart = currentStage;
     const key = `${roundAtStart}:${stageAtStart}`;
-    if (advancedForKeyRef.current === key) return;
 
-    const doAdvance = () => {
-      advancedForKeyRef.current = key;
-      // During build stage: auto-submit any captured-but-unsent photo so the builder's work isn't lost
+    const onExpire = () => {
+      setDeadlineExpired(true);
+      if (expiredHandledForKeyRef.current === key) return;
+      expiredHandledForKeyRef.current = key;
+      // Photo rescue: auto-upload a captured-but-unsent photo so a near-miss
+      // builder doesn't lose it. They can still retake/upload again normally.
       if (stageAtStart === "build" && photo && playerId && !hasPhotoThisRound) {
         uploadBuildPhoto({ sessionId, playerId, round: roundAtStart, photoDataUrl: photo }).catch(() => {});
         setPhoto(null);
         setLegoVerified(false);
       }
-      advanceSubPhase({ sessionId, fromRound: roundAtStart, fromStage: stageAtStart, force: true }).catch(() => {});
-      if (stageAtStart === "clue") {
-        toast(`Time's up. Everyone start building!`);
-      } else {
-        toast(roundAtStart < 3 ? `Time's up. Next round's clues coming.` : "Time's up. Moving to The Guess.");
-      }
     };
 
     const msLeft = deadline - Date.now();
-    if (msLeft <= 0) { doAdvance(); return; }
-    const t = setTimeout(doAdvance, msLeft);
+    if (msLeft <= 0) { onExpire(); return; }
+    setDeadlineExpired(false);
+    const t = setTimeout(onExpire, msLeft);
     return () => clearTimeout(t);
-  }, [session?.subPhaseDeadline, session?.phase, currentRound, currentStage, sessionId, advanceSubPhase, photo, playerId, hasPhotoThisRound, uploadBuildPhoto]);
+  }, [session?.subPhaseDeadline, session?.phase, currentRound, currentStage, sessionId, photo, playerId, hasPhotoThisRound, uploadBuildPhoto]);
 
   // Stage flipping drives the screen split (clue vs build), so no tab state.
 
@@ -904,6 +909,60 @@ export default function PairBuildScreen() {
           {isClueStage ? "\u{1F3A8} CLUE STAGE. Architects pick a clue." : "\u{1F9F1} BUILD STAGE. Builders build!"}
         </div>
         <Timer deadline={session?.subPhaseDeadline} />
+        {/* Pass #26: deadline-expired state. Show a force-CTA to anyone who
+            still owes a submission this round, and a waiting list to
+            everyone else. The round only advances when the last submission
+            lands (server-side gate in pairBuild.ts). */}
+        {deadlineExpired && !me?.isFacilitator && session?.phase === "pair_build" && (() => {
+          const nonFac = (players ?? []).filter((p) => !p.isFacilitator);
+          if (isClueStage) {
+            const sentIds = new Set((sentClues ?? []).filter((c) => c.round === currentRound).map((c) => c.architectId));
+            const pendingNames = nonFac.filter((p) => p.architectFor && !sentIds.has(p._id)).map((p) => p.name);
+            const iOwe = !!me?.architectFor && !sentIds.has(me._id);
+            if (iOwe) {
+              return (
+                <div style={{
+                  marginTop: 10, padding: "10px 14px",
+                  background: "rgba(255,90,60,.12)", border: "1px solid rgba(255,90,60,.45)",
+                  borderRadius: 8, color: "#ff9e80", fontSize: 12, fontWeight: 800, letterSpacing: 1, lineHeight: 1.5,
+                }}>
+                  TIME{"\u2019"}S UP. Pick a clue now to keep the game moving.
+                </div>
+              );
+            }
+            if (pendingNames.length > 0) {
+              return (
+                <div style={{ marginTop: 10, fontSize: 11, color: "var(--textd)", letterSpacing: 1 }}>
+                  Time{"\u2019"}s up. Waiting for: <span style={{ color: "var(--acc1)", fontWeight: 800 }}>{pendingNames.join(", ")}</span>
+                </div>
+              );
+            }
+            return null;
+          }
+          // build stage
+          const photoIds = new Set((buildPhotos ?? []).filter((p) => p.round === currentRound).map((p) => p.playerId));
+          const pendingNames = nonFac.filter((p) => p.builderFor && !photoIds.has(p._id)).map((p) => p.name);
+          const iOwe = !!me?.builderFor && !photoIds.has(me._id);
+          if (iOwe) {
+            return (
+              <div style={{
+                marginTop: 10, padding: "10px 14px",
+                background: "rgba(255,90,60,.12)", border: "1px solid rgba(255,90,60,.45)",
+                borderRadius: 8, color: "#ff9e80", fontSize: 12, fontWeight: 800, letterSpacing: 1, lineHeight: 1.5,
+              }}>
+                TIME{"\u2019"}S UP. {photo ? "Upload your photo now to keep the game moving." : "Take a photo and upload it now to keep the game moving."}
+              </div>
+            );
+          }
+          if (pendingNames.length > 0) {
+            return (
+              <div style={{ marginTop: 10, fontSize: 11, color: "var(--textd)", letterSpacing: 1 }}>
+                Time{"\u2019"}s up. Waiting for: <span style={{ color: "var(--acc2)", fontWeight: 800 }}>{pendingNames.join(", ")}</span>
+              </div>
+            );
+          }
+          return null;
+        })()}
         {session?.subPhaseDeadline === undefined && session?.phase === "pair_build" && players && (() => {
           // Pass #17: present-only ready counter. Ghosts don't show in the
           // denominator so the bar doesn't sit forever at N-1/N.

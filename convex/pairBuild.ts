@@ -234,14 +234,13 @@ export const advanceSubPhase = mutation({
     if (fromRound !== undefined && fromRound !== currentRound) return { advanced: false };
     if (fromStage !== undefined && fromStage !== currentStage) return { advanced: false };
 
-    // Readiness gate: deadline expired or force-flag bypasses; otherwise every
-    // expected architect clue / builder photo must be in for this round.
-    // Undefined deadline means the ready-gate window hasn't ended yet; treat
-    // as not-passed so the gate still applies. A real, past deadline is the
-    // only reason to bypass the clue/photo count check.
-    const deadlinePassed = session.subPhaseDeadline !== undefined
-      && session.subPhaseDeadline <= Date.now();
-    if (!force && !deadlinePassed) {
+    // Pass #26: deadline expiry is a UI signal, NOT an advance trigger. The
+    // round advances only when every present architect/builder has submitted.
+    // The auto-advance paths inside sendClue + uploadBuildPhoto handle the
+    // actual transition the moment the last submission lands; this mutation
+    // just enforces the same gate when called directly. Force is reserved for
+    // any future internal use (none currently called from the client).
+    if (!force) {
       const allPlayers = await ctx.db
         .query("players")
         .withIndex("by_session", (q) => q.eq("sessionId", sessionId))

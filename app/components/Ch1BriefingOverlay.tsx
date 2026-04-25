@@ -17,7 +17,8 @@ interface Props {
 
 // Blocking briefing shown to every non-fac player when Ch1 begins. Dismissing
 // the overlay marks this player ready on the server; once every non-fac
-// player is ready, the 45s placement timer starts for the whole session.
+// player is ready, the placement timer (CH1_PLACEMENT_SECONDS) starts for
+// the whole session.
 // Matches the visual + sessionStorage contract of the pair-build intro in
 // PairBuildScreen.tsx (see `intro-seen:${sessionId}`).
 export function Ch1BriefingOverlay({
@@ -56,7 +57,7 @@ export function Ch1BriefingOverlay({
         </div>
         <div style={{ fontSize: 12, color: "var(--textd)", marginBottom: 18, textAlign: "center", lineHeight: 1.5 }}>
           When everyone is ready, a{" "}
-          <strong style={{ color: "var(--acc1)" }}>45 second timer</strong>
+          <strong style={{ color: "var(--acc1)" }}>2 minute timer</strong>
           {" "}starts. Place your {districtTerm} on the {mapTerm} before it runs out.
         </div>
 
@@ -65,10 +66,10 @@ export function Ch1BriefingOverlay({
             Your riddle points at one {zoneTerm} on the {mapTerm}. It does not name the {zoneTerm}. You have to figure it out.
           </Step>
           <Step n={2} accent="var(--acc2)" label="DRAG TO PLACE">
-            When the timer starts you get 45 seconds. Drop your {districtTerm} on the {zoneTerm} you think the riddle means. You can reposition as many times as you want while the timer is running.
+            When the timer starts you get 2 minutes. Drop your {districtTerm} on the {zoneTerm} you think the riddle means. You can reposition as many times as you want while the timer is running.
           </Step>
           <Step n={3} accent="var(--acc4)" label="TIMER ENDS, POSITION LOCKS">
-            When 45 seconds are up, positions lock and the {mapTerm} is set for Chapter 2. If you never placed, you get dropped in a random {zoneTerm}.
+            When the 2 minutes are up, positions lock and the {mapTerm} is set for Chapter 2. If you never placed, you get dropped in a random {zoneTerm}.
           </Step>
         </div>
 
