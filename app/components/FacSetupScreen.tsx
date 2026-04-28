@@ -27,7 +27,6 @@ export default function FacSetupScreen() {
   const [districtAssignments, setDistrictAssignments] = useState<Record<string, string>>({});
   const [pairingsGenerated, setPairingsGenerated] = useState(false);
   const [rolesSent, setRolesSent] = useState(false);
-  const [expandedAbility, setExpandedAbility] = useState<string | null>(null);
 
   const nonFac = (players || []).filter((p) => !p.isFacilitator);
   // Pass #17: presence-filtered roster. Every gate ("all voted", "all seen",
@@ -251,51 +250,6 @@ export default function FacSetupScreen() {
           </div>
         </div>
       )}
-
-      {/* Ability detail modal (animated) */}
-      {expandedAbility !== null && (() => {
-        const baseA = ABILITIES.find((ab) => ab.id === expandedAbility);
-        if (!baseA) return null;
-        const a = getThemedAbility(baseA, scenarioData);
-        const assignedTo = Object.entries(abilityAssignments).find(([, aid]) => aid === a.id);
-        const assignedPlayer = assignedTo ? nonFac.find((p) => p._id === assignedTo[0]) : null;
-        const abilityColors: Record<string, string> = {
-          mender: "#4FC3F7", scout: "#B388FF", engineer: "#FF7043", anchor: "#66BB6A", diplomat: "#FFD740", citizen: "#EC407A",
-        };
-        const color = abilityColors[a.id] || "#B388FF";
-        return (
-          <div className="card-modal-overlay" onClick={() => setExpandedAbility(null)}>
-            <div className="card-modal" onClick={(e) => e.stopPropagation()}>
-              <div className="card-modal-studs">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="lego-stud-3d" style={{ width: 16, height: 16 }} />
-                ))}
-              </div>
-              <div className="card-modal-accent" style={{ background: color }} />
-              <div className="card-modal-body">
-                <div className="card-modal-icon" style={{ display: "flex", justifyContent: "center" }}>
-                  <AbilityBadge ability={a} size={120} />
-                </div>
-                <div className="card-modal-title" style={{ color }}>{a.label}</div>
-                <div className="card-modal-section">
-                  <div className="card-modal-section-lbl" style={{ color: "var(--acc2)" }}>GAME MECHANIC</div>
-                  <div className="card-modal-rule">{a.mechanic}</div>
-                </div>
-                <div className="card-modal-section">
-                  <div className="card-modal-section-lbl card-modal-hr-lbl">FACILITATOR INSIGHT</div>
-                  <div className="card-modal-hr">{a.hrNote}</div>
-                </div>
-                {assignedPlayer && (
-                  <div className="card-modal-hint" style={{ color: "var(--acc4)" }}>
-                    Assigned to {assignedPlayer.name}
-                  </div>
-                )}
-              </div>
-              <button className="card-modal-close" onClick={() => setExpandedAbility(null)}>CLOSE</button>
-            </div>
-          </div>
-        );
-      })()}
 
       {/* NEW FLOW: Role assignment + pairing */}
       {scenarioConfirmed && (
@@ -679,32 +633,10 @@ export default function FacSetupScreen() {
                 );
               })()}
               {rolesSent && !pairingsGenerated && (() => {
-                // Pass #17: "all seen" gate only considers present players, so
-                // a dropped player's un-opened card never blocks advance.
                 const seenCount = presentNonFac.filter((p) => p.roleSeenAt).length;
                 const allSeen = presentNonFac.length > 0 && seenCount === presentNonFac.length;
-                const hasMender = presentNonFac.some((p) => p.ability === "mender");
-                const warnNoMender = presentNonFac.length >= 4 && !hasMender;
                 return (
                   <>
-                    {warnNoMender && (
-                      <div
-                        style={{
-                          background: "rgba(255,215,0,.12)",
-                          border: "1.5px solid rgba(255,215,0,.5)",
-                          borderRadius: 8,
-                          padding: "8px 12px",
-                          fontSize: 11,
-                          fontWeight: 700,
-                          color: "#FFD740",
-                          marginBottom: 10,
-                          textAlign: "center",
-                          lineHeight: 1.35,
-                        }}
-                      >
-                        No Mender assigned. If a connection is lost in the crisis, only the facilitator can repair it.
-                      </div>
-                    )}
                     <button
                       className={`lb ${allSeen ? "lb-yellow" : "lb-ghost"} fac-advance-btn`}
                       disabled={!allSeen}
@@ -728,7 +660,7 @@ export default function FacSetupScreen() {
             <div className="fac-cards-header">
               <div className="slbl">ROLES REFERENCE</div>
               <div className="fac-cards-sub">
-                Every player gets a role. Tap VIEW DETAILS for full info.
+                One role per player. Use the personality hint to match each role to the right teammate.
               </div>
             </div>
             <div className="fac-card-grid">
@@ -763,19 +695,7 @@ export default function FacSetupScreen() {
                     </div>
                     <div className="fac-card-bottom">
                       <div className="fac-card-title">{a.label}</div>
-                      <div className="fac-card-hr-preview">{a.hrNote}</div>
-                      <div className="fac-card-meta">
-                        <span>Special ability</span>
-                      </div>
-                      <button
-                        className="fac-card-expand"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setExpandedAbility(a.id);
-                        }}
-                      >
-                        VIEW DETAILS
-                      </button>
+                      <div className="fac-card-hr-preview">{a.assignmentHint}</div>
                     </div>
                   </div>
                 );

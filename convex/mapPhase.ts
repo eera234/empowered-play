@@ -70,6 +70,49 @@ async function pruneExpiredRequests(
 // Player A taps their own district, then player B's district. This sends a
 // connection request. Player B sees a toast and can ACCEPT or DECLINE.
 // Rejects: self, duplicate pair connection, already-pending request.
+// Pass #34: a player can only be in one active connection at a time.
+// "Active" = participating in a connections row that is not yet built and
+// not crisis-destroyed, OR the sender/recipient of a non-expired pending
+// request. excludeRequestId lets the caller skip a specific pending request
+// row (used by acceptConnection so the request being accepted does not
+// itself count as making the parties busy).
+async function isPlayerBusy(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ctx: any,
+  sessionId: Id<"sessions">,
+  pid: Id<"players">,
+  conns: Array<{
+    fromSlotId: string;
+    toSlotId: string;
+    built?: boolean;
+    destroyedByCrisisIndex?: number;
+  }>,
+  excludeRequestId?: Id<"connection_requests">,
+): Promise<boolean> {
+  const pidStr = pid as unknown as string;
+  const inActiveConn = conns.some((c) =>
+    (c.fromSlotId === pidStr || c.toSlotId === pidStr)
+    && c.built !== true
+    && !c.destroyedByCrisisIndex
+  );
+  if (inActiveConn) return true;
+  const reqs = await ctx.db
+    .query("connection_requests")
+    .withIndex("by_session", (q: { eq: (k: string, v: Id<"sessions">) => unknown }) => q.eq("sessionId", sessionId))
+    .collect();
+  const now = Date.now();
+  return reqs.some((r: {
+    _id: Id<"connection_requests">;
+    fromPlayerId: Id<"players">;
+    toPlayerId: Id<"players">;
+    expiresAt: number;
+  }) =>
+    r._id !== excludeRequestId
+    && (r.fromPlayerId === pid || r.toPlayerId === pid)
+    && r.expiresAt > now
+  );
+}
+
 export const requestConnection = mutation({
   args: {
     sessionId: v.id("sessions"),
@@ -105,6 +148,9 @@ export const requestConnection = mutation({
     if (duplicate) return { success: false as const, error: "That bridge already exists." };
 
     // Pending incoming from target? Auto-accept into a connection (mutual).
+    // The mutual reciprocate path bypasses the busy check below — the
+    // counterpart pending request makes both parties "busy" with each
+    // other, which is exactly the connection we're about to open.
     const mutual = allReqs.find(
       (r) => r.fromPlayerId === toPlayerId && r.toPlayerId === fromPlayerId && r.expiresAt > now,
     );
@@ -139,6 +185,16 @@ export const requestConnection = mutation({
       // Refresh expiry.
       await ctx.db.patch(existing._id, { expiresAt: now + REQUEST_EXPIRY_MS });
       return { success: true as const, requestId: existing._id };
+    }
+
+    // Pass #34: enforce one active connection per player. Reject if either
+    // side already has an in-progress connection or a pending request with
+    // someone else.
+    if (await isPlayerBusy(ctx, sessionId, fromPlayerId, connections)) {
+      return { success: false as const, error: "You're already in a connection. Finish it before starting another." };
+    }
+    if (await isPlayerBusy(ctx, sessionId, toPlayerId, connections)) {
+      return { success: false as const, error: "That player is already in a connection. Try someone else." };
     }
 
     // Pass #16: do NOT assign a connection type here. The type is revealed to
@@ -189,6 +245,20 @@ export const acceptConnection = mutation({
     }
     if (req.toPlayerId !== acceptedBy) {
       return { success: false as const, error: "Only the target can accept." };
+    }
+    // Pass #34: enforce one active connection per player at accept time too.
+    // Race scenario: requester sent another request after this one and got
+    // it accepted by someone else. Exclude THIS request from the check so
+    // it doesn't count itself as making either party busy.
+    const connections = await ctx.db
+      .query("connections")
+      .withIndex("by_session", (q) => q.eq("sessionId", req.sessionId))
+      .collect();
+    if (await isPlayerBusy(ctx, req.sessionId, acceptedBy, connections, requestId)) {
+      return { success: false as const, error: "You're already in a connection. Finish it before starting another." };
+    }
+    if (await isPlayerBusy(ctx, req.sessionId, req.fromPlayerId, connections, requestId)) {
+      return { success: false as const, error: "They're already in another connection now." };
     }
     await ctx.db.delete(requestId);
     // Pass #16: pick the type at accept time so it's revealed to both
@@ -1170,7 +1240,7 @@ export const scoutChooseC2 = mutation({
       await ctx.db.insert("messages", {
         sessionId,
         sender: "SCOUT",
-        text: `Ch3 pattern revealed: ${name} (${shape} shape). Plan your rearrange.`,
+        text: `Chapter 3 pattern revealed: ${name} (${shape} shape).`,
         isFacilitator: false,
       });
     }
@@ -1284,29 +1354,8 @@ export const diplomatChaosTick = mutation({
 // Engineer actions
 // ──────────────────────────────────────────────────────────────
 
-// Crisis 1: pre-shield a player against Crisis 2 damage.
-export const engineerPreShield = mutation({
-  args: {
-    sessionId: v.id("sessions"),
-    engineerId: v.id("players"),
-    targetPlayerId: v.id("players"),
-  },
-  handler: async (ctx, { sessionId, engineerId, targetPlayerId }) => {
-    const eng = await ctx.db.get(engineerId);
-    if (!eng || eng.ability !== "engineer") throw new Error("Not the Engineer.");
-    const session = await ctx.db.get(sessionId);
-    if (!session || session.crisisIndex !== 1) throw new Error("Not in Crisis 1.");
-
-    await ctx.db.patch(sessionId, { engineerShieldTarget: targetPlayerId });
-    await ctx.db.patch(engineerId, { crisisContribution: "done" });
-    // Engineer C1 input does not gate C1 resolution (shield applies to C2),
-    // but calling the helper is cheap and idempotent.
-    await maybeResolveCrisis(ctx, sessionId);
-  },
-});
-
-// Crisis 2: pick new connection type for each destroyed dyad. Options filtered
-// to types the target player has NOT already built.
+// Each crisis: pick new connection type for each destroyed dyad. Fires
+// post-resolution. Options filtered to types neither player has built.
 export const engineerPickRebuildType = mutation({
   args: {
     sessionId: v.id("sessions"),
@@ -1318,7 +1367,7 @@ export const engineerPickRebuildType = mutation({
     const eng = await ctx.db.get(engineerId);
     if (!eng || eng.ability !== "engineer") throw new Error("Not the Engineer.");
     const session = await ctx.db.get(sessionId);
-    if (!session || session.crisisIndex !== 2) throw new Error("Not in Crisis 2.");
+    if (!session || !session.crisisIndex) throw new Error("No crisis active.");
     if (!session.damageResolved) throw new Error("Damage has not been resolved yet.");
     const pairs = session.currentCrisisDamagedPairs ?? [];
     if (dyadIndex < 0 || dyadIndex >= pairs.length) throw new Error("Bad dyad index.");
@@ -1653,8 +1702,7 @@ async function commitCrisisDeal(
     }
 
     // Session state: crisis active, damage NOT yet resolved. Clear per-crisis
-    // inputs so fresh Scout/Anchor/Citizen choices are captured cleanly. Note
-    // engineerShieldTarget intentionally persists from C1 to gate C2 damage.
+    // inputs so fresh Scout/Anchor/Citizen choices are captured cleanly.
     // Pass #18: crisis now has an explicit pre-announce window (10s) during
     // which role-holders take their pre-crisis actions. After that, damage
     // lands. crisisSubPhase transitions drive client UI: "pre" → pre-crisis
@@ -1776,19 +1824,6 @@ async function runResolveDamage(
       });
     }
   }
-  if (isC2 && session.engineerShieldTarget) {
-    excluded.add(session.engineerShieldTarget as string);
-    if (connectedPlayerIds.has(session.engineerShieldTarget as string)) {
-      const engineer = players.find(p => p.ability === "engineer");
-      protectionEvents.push({
-        savedPlayerId: session.engineerShieldTarget as Id<"players">,
-        protectorPlayerId: engineer?._id,
-        protectorRole: "engineer",
-        at: nowTs,
-      });
-    }
-  }
-
   let mandatoryScoutId: Id<"players"> | null = null;
   if (isC2) {
     const scout = players.find(p => p.ability === "scout");
@@ -1857,10 +1892,6 @@ async function runResolveDamage(
     victims.push(pick._id);
   }
 
-  // Theme-aware connection type list for C1 random-new-type picking.
-  const theme = themeForScenario(session.scenario);
-  const typeIds = (CONNECTION_TYPES[theme] ?? CONNECTION_TYPES.water).map(t => t.id);
-
   const damagedPairs: Array<{
     aPlayerId: Id<"players">;
     bPlayerId: Id<"players">;
@@ -1878,21 +1909,9 @@ async function runResolveDamage(
     const b = pick.toSlotId as Id<"players">;
     const originalType = pick.connectionType ?? "bridge";
 
-    // C1: assign a random NEW type different from original and not in either
-    // player's build history. C2: leave undefined so Engineer picks it.
-    let newType: string | undefined;
-    if (!isC2) {
-      const aDoc = await ctx.db.get(a);
-      const bDoc = await ctx.db.get(b);
-      const aHist = (aDoc?.connectionsBuiltHistory ?? []) as string[];
-      const bHist = (bDoc?.connectionsBuiltHistory ?? []) as string[];
-      const eligibleTypes = typeIds.filter(t =>
-        t !== originalType && !aHist.includes(t) && !bHist.includes(t)
-      );
-      newType = pickRandomFromArray(eligibleTypes) ??
-        pickRandomFromArray(typeIds.filter(t => t !== originalType)) ??
-        originalType;
-    }
+    // newType is left undefined; the Engineer picks it post-resolution in
+    // both crises via engineerPickRebuildType.
+    const newType: string | undefined = undefined;
 
     await ctx.db.patch(pick._id, {
       destroyedByCrisisIndex: crisisIndex,
@@ -1950,7 +1969,6 @@ async function maybeResolveCrisis(
 
   const scout = players.find(p => p.ability === "scout");
   const anchor = players.find(p => p.ability === "anchor");
-  const engineer = players.find(p => p.ability === "engineer");
   const citizens = players.filter(p => p.ability === "citizen");
   const conns = await ctx.db
     .query("connections")
@@ -1972,12 +1990,9 @@ async function maybeResolveCrisis(
     if (anchorHasConn && !session.anchorImmuneTarget) return;
   }
 
-  // Pass #30: Engineer ready check. Engineer's pre-resolution action is C1
-  // only (pre-shield for the next crisis). In C2 the Engineer is post-
-  // resolution (rebuild-type picker), not gating.
-  if (engineer && session.crisisIndex === 1) {
-    if (!session.engineerShieldTarget) return;
-  }
+  // Engineer is post-resolution in both crises (rebuild-type picker), so
+  // does not gate damage. Their picks land via engineerPickRebuildType
+  // after damage resolves.
 
   // Citizens ready check
   if (citizens.length > 0) {
@@ -2428,44 +2443,53 @@ export const updateCh3Position = mutation({
     const session = await ctx.db.get(sessionId);
     const player = await ctx.db.get(playerId);
     if (!session || !player) throw new Error("Missing.");
-    const slot = (session.ch3TargetSlots ?? []).find(s => s.slotId === player.ch3TargetSlotId);
-    // Pass #31: bump Euclidean tolerance from 12 to 18% radius. Pass #25's 12%
-    // was still rejecting honest "in the right neighborhood" placements on
-    // mobile drag with no snap-to-slot. Slots are spaced ~33%+ apart on the
-    // circle so an 18% radius can't accidentally satisfy a neighbor's slot.
-    const dx = (slot?.x ?? 0) - x;
-    const dy = (slot?.y ?? 0) - y;
-    const inSlot = slot ? Math.sqrt(dx * dx + dy * dy) <= 18 : false;
-    await ctx.db.patch(playerId, { x, y, ch3InTargetSlot: inSlot });
+    const targetSlots = session.ch3TargetSlots ?? [];
+    const slot = targetSlots.find(s => s.slotId === player.ch3TargetSlotId);
+    // Pass #31: 18% radius Euclidean tolerance in 0-100 percentage space.
+    // Pass #33: re-evaluate every assigned player's in-slot status from their
+    // current x,y on every drop, instead of trusting stored ch3InTargetSlot
+    // flags. The prior logic only updated the dropper's flag; if any other
+    // player carried over from Ch1 already on-target, or had their flag get
+    // out of sync, the pattern could never auto-complete and HR had to use
+    // FORCE COMPLETE every game.
+    const TOLERANCE = 18;
+    const computeInSlot = (px: number | undefined, py: number | undefined, slotX: number, slotY: number) => {
+      if (px == null || py == null) return false;
+      const ddx = slotX - px;
+      const ddy = slotY - py;
+      return Math.sqrt(ddx * ddx + ddy * ddy) <= TOLERANCE;
+    };
+    const dropperInSlot = slot ? computeInSlot(x, y, slot.x, slot.y) : false;
+    await ctx.db.patch(playerId, { x, y, ch3InTargetSlot: dropperInSlot });
 
-    // Auto-complete check: EVERY assigned target slot must have its assignee
-    // in-slot. Pass #19 fix: the prior version filtered by an 8s presence
-    // window, so a momentarily-stale peer dropped out of the required set
-    // and the pattern could complete with just one player placed. Now we
-    // walk session.ch3TargetSlots directly; every assigned player has to
-    // be in their slot for the pattern to reveal. If a player has been
-    // missing for more than 60s we treat them as genuinely left and drop
-    // their slot from the required set so the rest of the team isn't stuck.
     if (!session.hiddenPatternRevealed) {
       const players = await ctx.db
         .query("players")
         .withIndex("by_session", q => q.eq("sessionId", sessionId))
         .collect();
       const byId = new Map(players.map((p) => [p._id as unknown as string, p]));
-      const targetSlots = session.ch3TargetSlots ?? [];
       const nowMs = Date.now();
       const ABANDON_MS = 60_000;
       let allInSlot = targetSlots.length > 0;
       for (const ts of targetSlots) {
         const assigneeId = ts.assignedTo as unknown as string | undefined;
-        if (!assigneeId) { allInSlot = false; break; }
+        if (!assigneeId) continue;
         const assignee = byId.get(assigneeId);
-        if (!assignee) { allInSlot = false; break; }
-        // If the assignee hasn't pinged in over a minute treat them as gone.
+        if (!assignee) continue;
         const abandoned = assignee.lastSeenAt != null && nowMs - assignee.lastSeenAt > ABANDON_MS;
         if (abandoned) continue;
-        const assigneeInSlot = assignee._id === playerId ? inSlot : assignee.ch3InTargetSlot === true;
-        if (!assigneeInSlot) { allInSlot = false; break; }
+        // Recompute from live position. For the dropper use the in-flight
+        // (x, y) we just received; for everyone else use their stored x, y.
+        const isDropper = (assignee._id as unknown as string) === (playerId as unknown as string);
+        const px = isDropper ? x : assignee.x;
+        const py = isDropper ? y : assignee.y;
+        const assigneeInSlot = computeInSlot(px, py, ts.x, ts.y);
+        // Self-heal stored flag if it disagrees, so the client-side visual
+        // (allComplete in StoryMapScreen) stays in sync with the server.
+        if (!isDropper && assignee.ch3InTargetSlot !== assigneeInSlot) {
+          await ctx.db.patch(assignee._id, { ch3InTargetSlot: assigneeInSlot });
+        }
+        if (!assigneeInSlot) { allInSlot = false; }
       }
       if (allInSlot) {
         await ctx.db.patch(sessionId, { hiddenPatternRevealed: true });

@@ -162,6 +162,12 @@ export default function StoryMapScreen() {
   const placed = presentNonFac.filter((p) => p.x !== undefined && p.y !== undefined);
   const unplaced = presentNonFac.filter((p) => p.x === undefined || p.y === undefined);
   const allPlaced = presentNonFac.length > 0 && unplaced.length === 0;
+  // "Solved" = every present non-fac player has landed inside their assigned
+  // Ch1 target zone (ch1Placed flag flipped server-side via setCh1PlacedMut).
+  // Distinct from allPlaced, which only checks "has any (x, y)".
+  const allCh1Solved = phase === "map_ch1"
+    && presentNonFac.length > 0
+    && presentNonFac.every((p) => !!p.ch1Placed);
 
   // Desktop breakpoint: used to widen the main container up to 1280px and
   // reserve room for the right-sidebar chat. Matches MapChatPanel's own
@@ -296,6 +302,27 @@ export default function StoryMapScreen() {
       setCh1CelebrateAt(null);
     }
   }, [phase, me?.ch1Placed, me?.targetZone, me?.isFacilitator, slots]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Facilitator nudge: when every player has solved their Ch1 riddle, fire
+  // a one-shot toast + chime so the facilitator knows it's time to advance
+  // to Chapter 2. Mirrors the per-player celebrate above. If a player drags
+  // off-target so allCh1Solved goes back to false, reset the ref so the
+  // nudge can re-fire when the team re-solves.
+  const ch1AllSolvedNudgeRef = useRef(false);
+  useEffect(() => {
+    if (phase !== "map_ch1" || !isFacilitator) {
+      ch1AllSolvedNudgeRef.current = false;
+      return;
+    }
+    if (allCh1Solved && !ch1AllSolvedNudgeRef.current) {
+      ch1AllSolvedNudgeRef.current = true;
+      playSound("clue-sent");
+      toast("All riddles solved. Tap ADVANCE TO CH 2.");
+    }
+    if (!allCh1Solved && ch1AllSolvedNudgeRef.current) {
+      ch1AllSolvedNudgeRef.current = false;
+    }
+  }, [phase, isFacilitator, allCh1Solved]);
 
   // Pass #16: Ch2 + Ch3 onboarding are now driven by blocking ready-gate
   // overlays (Ch2IntroOverlay, Ch3IntroOverlay) synced with server flags.
@@ -453,6 +480,45 @@ export default function StoryMapScreen() {
     );
     if (existing) {
       toast("You already have a bridge with this player.");
+      setSelectedForConnection(null);
+      return;
+    }
+    // Pass #34: one active connection per player. Block the tap if either
+    // side already has an in-progress connection or a non-expired pending
+    // request with someone else. The mutual-reciprocate path (target has a
+    // pending request to me) is allowed through.
+    const nowMs = Date.now();
+    const isInActiveConn = (pid: string) => (connections ?? []).some((c) =>
+      (c.fromSlotId === pid || c.toSlotId === pid)
+      && c.built !== true
+      && !c.destroyedByCrisisIndex
+    );
+    const hasOtherPendingRequest = (pid: string, partnerId: string) =>
+      (connectionRequests ?? []).some((r) => {
+        if (r.expiresAt <= nowMs) return false;
+        const isMine = r.fromPlayerId === pid || r.toPlayerId === pid;
+        if (!isMine) return false;
+        const counterpartId = r.fromPlayerId === pid ? r.toPlayerId : r.fromPlayerId;
+        return counterpartId !== partnerId;
+      });
+    const targetReciprocating = (connectionRequests ?? []).some(
+      (r) => r.fromPlayerId === targetPlayerId
+        && r.toPlayerId === selectedForConnection
+        && r.expiresAt > nowMs,
+    );
+    const meBusy = isInActiveConn(selectedForConnection)
+      || hasOtherPendingRequest(selectedForConnection, targetPlayerId);
+    const themBusy = !targetReciprocating && (
+      isInActiveConn(targetPlayerId)
+      || hasOtherPendingRequest(targetPlayerId, selectedForConnection)
+    );
+    if (meBusy) {
+      toast("You're already in a connection. Finish it before starting another.");
+      setSelectedForConnection(null);
+      return;
+    }
+    if (themBusy) {
+      toast("They're already in a connection. Try someone else.");
       setSelectedForConnection(null);
       return;
     }
@@ -1008,14 +1074,14 @@ export default function StoryMapScreen() {
       }
 
       {/* Pass #18: Ch3 no longer has bridge-photo uploads. The pattern
-          rearrange uses drag-only; no LEGO building in Ch3. */}
+          placement uses drag-only; no LEGO building in Ch3. */}
 
       {/* Pass #28: removed the floating ScoutBroadcastCard. The inline Scout
           Intel preview panel below (with the "OK, SEEN. ANNOUNCE TO TEAM"
           button → confirmCrisisAnnounce) is the canonical Scout confirm UI;
           a second floating button posting a chat message duplicated the
           announce action and looked broken against the busy map background.
-          Scouts now warn the team verbally per the inline panel's copy. */}
+          Scouts now warn the team in chat per the inline panel's copy. */}
 
       {/* ── Narration header: full when open, thin pinned strip once collapsed ── */}
       {chapterText && (narrationVisible ? (
@@ -1160,6 +1226,22 @@ export default function StoryMapScreen() {
       })()}
 
       {/* ── Ch1 facilitator roster: who is placed, who isn't ── */}
+      {phase === "map_ch1" && isFacilitator && allCh1Solved && (
+        <div style={{
+          padding: "10px 16px",
+          background: "rgba(105,240,174,.12)",
+          borderBottom: "1px solid rgba(105,240,174,.45)",
+          display: "flex", alignItems: "center", gap: 10,
+        }}>
+          <span style={{ fontSize: 16 }}>{"✓"}</span>
+          <span style={{
+            fontFamily: "'Black Han Sans', sans-serif", fontSize: 12,
+            letterSpacing: 2, color: "var(--acc4)", textTransform: "uppercase",
+          }}>
+            All riddles solved. Advance to Chapter 2.
+          </span>
+        </div>
+      )}
       {phase === "map_ch1" && isFacilitator && (
         <div style={{
           padding: "10px 16px", background: "rgba(255,255,255,.02)",
@@ -1220,7 +1302,7 @@ export default function StoryMapScreen() {
                   onClick={async () => {
                     if (!sessionId) return;
                     await skipCh1ReadyGate({ sessionId });
-                    toast(`Ch1 timer started (${CH1_PLACEMENT_SECONDS}s).`);
+                    toast(`Chapter 1 timer started (${CH1_PLACEMENT_SECONDS}s).`);
                   }}
                   title={`Force-start the ${CH1_PLACEMENT_SECONDS}s placement timer without waiting on stragglers`}
                 >
@@ -2024,7 +2106,7 @@ export default function StoryMapScreen() {
             fontSize: 11.5, color: "rgba(255,255,255,.7)",
             lineHeight: 1.5, padding: "0 2px",
           }}>
-            Only you can see this. Warn the team verbally without naming the card.
+            Only you can see this. Warn the team in chat without naming the card.
             When ready, announce it to start the crisis.
           </div>
 
@@ -2406,15 +2488,28 @@ export default function StoryMapScreen() {
               : ch3Blocked
                 ? "Wait for every player to land their district in the glowing slot, or tap FORCE COMPLETE to override."
                 : undefined;
+            const ch1Ready = phase === "map_ch1" && allCh1Solved;
             return (
               <button
                 className="lb lb-green"
-                style={{ fontSize: 11, padding: "8px 14px", opacity: blocked ? 0.45 : 1, cursor: blocked ? "not-allowed" : "pointer" }}
+                style={{
+                  fontSize: 11,
+                  padding: "8px 14px",
+                  opacity: blocked ? 0.45 : 1,
+                  cursor: blocked ? "not-allowed" : "pointer",
+                  animation: ch1Ready ? "advReadyPulse 1.6s ease-in-out infinite" : undefined,
+                }}
                 onClick={handleAdvance}
                 disabled={blocked}
                 title={blockedTitle}
               >
                 {advanceLabel}
+                <style>{`
+                  @keyframes advReadyPulse {
+                    0%, 100% { box-shadow: 0 0 0 0 rgba(105,240,174,.55); }
+                    50% { box-shadow: 0 0 0 10px rgba(105,240,174,0); }
+                  }
+                `}</style>
               </button>
             );
           })() : (
@@ -2588,7 +2683,6 @@ function PreCrisisWaitingOn({
     scoutC1Choice?: string;
     scoutC2Choice?: string;
     anchorImmuneTarget?: Id<"players"> | string;
-    engineerShieldTarget?: Id<"players"> | string;
   };
 }) {
   const crisisIndex = session.crisisIndex ?? 1;
@@ -2614,11 +2708,6 @@ function PreCrisisWaitingOn({
     if (anchorHasConn && !session.anchorImmuneTarget) {
       waitingOn.push(`${anchor.name} (Anchor)`);
     }
-  }
-
-  const engineer = players.find((p) => p.ability === "engineer");
-  if (engineer && crisisIndex === 1 && !session.engineerShieldTarget) {
-    waitingOn.push(`${engineer.name} (Engineer)`);
   }
 
   const citizens = players.filter((p) => p.ability === "citizen");

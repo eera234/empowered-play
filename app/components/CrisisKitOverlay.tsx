@@ -114,7 +114,12 @@ export function ScoutC1Modal({
           {targets.map(t => (
             <button
               key={t._id}
-              style={{ ...btn("ghost"), background: target === t._id ? "rgba(255,215,0,.22)" : undefined }}
+              style={{
+                ...btn("ghost"),
+                ...(target === t._id
+                  ? { background: "rgba(255,215,0,.22)", borderColor: "rgba(255,215,0,.85)" }
+                  : {}),
+              }}
               onClick={() => setTarget(t._id)}
             >
               {t.name}
@@ -182,37 +187,7 @@ export function ScoutC2Modal({
   );
 }
 
-// ═══════════ Engineer C1 pre-shield ═══════════
-export function EngineerC1Modal({
-  sessionId, engineerId, roleLabel, onDone,
-}: {
-  sessionId: Id<"sessions">; engineerId: Id<"players">; roleLabel?: string; onDone: () => void;
-}) {
-  const players = useQuery(api.game.getPlayers, { sessionId });
-  const preShield = useMutation(api.mapPhase.engineerPreShield);
-  const targets = (players ?? []).filter(p => !p.isFacilitator && p._id !== engineerId);
-  return (
-    <ModalFrame
-      title={`${roleLabel ?? "ENGINEER"}: PRE-SHIELD`}
-      subtitle="Pick one teammate whose district you will shield against the next crisis. Whatever they would lose next, they keep."
-    >
-      {targets.map(t => (
-        <button
-          key={t._id}
-          style={btn("ghost")}
-          onClick={async () => {
-            await preShield({ sessionId, engineerId, targetPlayerId: t._id });
-            onDone();
-          }}
-        >
-          🛡️ {t.name}
-        </button>
-      ))}
-    </ModalFrame>
-  );
-}
-
-// ═══════════ Engineer C2 type picker ═══════════
+// ═══════════ Engineer rebuild-type picker (both crises) ═══════════
 export function EngineerC2Modal({
   sessionId, engineerId, damagedPairs, theme, roleLabel, onDone,
 }: {

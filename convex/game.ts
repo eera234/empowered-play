@@ -593,10 +593,25 @@ export const advanceNewPhase = mutation({
         y: s.y,
         assignedTo: nonFac[i]?._id,
       }));
+      // Pass #33: seed ch3InTargetSlot from each player's current position
+      // instead of forcing it to false. If a player ended Ch1 already inside
+      // their Ch3 target tolerance, they're credited from the start without
+      // having to drag-and-redrop. The auto-complete check in updateCh3Position
+      // also re-evaluates from positions, so this mostly matters for the
+      // visual pattern overlay during the first frame of Ch3.
+      const TOLERANCE = 18;
       for (let i = 0; i < nonFac.length; i++) {
-        await ctx.db.patch(nonFac[i]._id, {
-          ch3TargetSlotId: slots[i].slotId,
-          ch3InTargetSlot: false,
+        const p = nonFac[i];
+        const slot = slots[i];
+        let alreadyInSlot = false;
+        if (p.x != null && p.y != null) {
+          const dx = slot.x - p.x;
+          const dy = slot.y - p.y;
+          alreadyInSlot = Math.sqrt(dx * dx + dy * dy) <= TOLERANCE;
+        }
+        await ctx.db.patch(p._id, {
+          ch3TargetSlotId: slot.slotId,
+          ch3InTargetSlot: alreadyInSlot,
           // Pass #16: Ch3 intro gate. Each player must dismiss Ch3IntroOverlay
           // before HR can interact with the Ch3 map.
           ch3Ready: false,

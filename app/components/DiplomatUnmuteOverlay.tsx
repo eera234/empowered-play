@@ -15,7 +15,7 @@ interface Props {
   onDone?: () => void;
 }
 
-const TOTAL_MS = 15_000;
+const TOTAL_MS = 16_000;
 const TICK_MS = 2_000;
 
 // Pass #18: Diplomat's chat-unmute mini-game. Renders only for the player

@@ -9,7 +9,7 @@ import RebuildPromptOverlay from "./RebuildPromptOverlay";
 import RoleRotationOverlay from "./RoleRotationOverlay";
 import {
   ScoutC1Modal, ScoutC2Modal,
-  EngineerC1Modal, EngineerC2Modal, MenderModal,
+  EngineerC2Modal, MenderModal,
   AnchorModal, CitizenVoteModal,
 } from "./CrisisKitOverlay";
 import { SCENARIOS, ABILITIES, getThemedAbility } from "../../lib/constants";
@@ -155,18 +155,9 @@ export default function Ch2Pass13Overlays({ sessionId, sessionCode, playerId, is
     // DiplomatUnmuteOverlay in StoryMapScreen (server-synced timer, gated on
     // session.diplomatUnmuteStartedAt). Mounting it here too would stack two
     // overlays with diverging local/server timers.
-    if (role === "engineer" && crisisIndex === 1) {
-      return (
-        <EngineerC1Modal
-          sessionId={sessionId}
-          engineerId={playerId}
-          roleLabel={roleLabel}
-          onDone={() => void checkClearance({ sessionId })}
-        />
-      );
-    }
-    if (role === "engineer" && crisisIndex === 2) {
-      // Post-resolution only: wait for damage list.
+    if (role === "engineer") {
+      // Post-resolution in both crises: wait for damage list, then pick a
+      // rebuild type per damaged dyad.
       if (!damageResolved) return <WaitingForResolution label="Waiting for pre-resolution actions…" />;
       return (
         <EngineerC2Modal
@@ -224,12 +215,10 @@ export default function Ch2Pass13Overlays({ sessionId, sessionCode, playerId, is
       c.damagedSidePlayerId === playerId
     );
     if (myConn) {
-      // Pass #30: in C2, the Engineer picks rebuildNewType post-damage. Don't
-      // reveal destruction to the victim until their type is set, otherwise
-      // they would see a stale fallback to the OLD type and start rebuilding
-      // wrong. C1 sets rebuildNewType server-side at damage-resolve time, so
-      // it's always present when this branch runs.
-      if (crisisIndex === 2 && !myConn.rebuildNewType) {
+      // Engineer picks rebuildNewType post-damage in both crises. Don't reveal
+      // destruction to the victim until their type is set, otherwise they
+      // would see a stale fallback to the OLD type and start rebuilding wrong.
+      if (!myConn.rebuildNewType) {
         return <WaitingForResolution label="Standby. Engineer is choosing your rebuild type…" />;
       }
       const isA = myConn.fromSlotId === playerId;

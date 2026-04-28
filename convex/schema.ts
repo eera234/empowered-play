@@ -89,7 +89,7 @@ export default defineSchema({
       text: v.string(),
       at: v.number(),
     })),
-    engineerShieldTarget: v.optional(v.id("players")), // C1 pre-shield for C2
+    engineerShieldTarget: v.optional(v.id("players")), // DEPRECATED: pre-shield mechanic removed; field kept so live sessions still load
     anchorImmuneTarget: v.optional(v.id("players")),   // the connected player whose district is immune this crisis
     menderHealed: v.optional(v.id("players")),         // the player whose connection was healed this crisis (one of the damaged)
     diplomatUnmuteStartedAt: v.optional(v.number()),   // timestamp when mini-game started
@@ -113,8 +113,8 @@ export default defineSchema({
       originalType: v.string(),
     }))),
     // Pass #16: public banner payload. Populated by runResolveDamage when one
-    // or more players were shielded (Anchor, Engineer pre-shield, Scout C2
-    // protect, etc.). Cleared when the next crisis resolves. The `at` field
+    // or more players were shielded (Anchor, Scout C2 protect, etc.). Cleared
+    // when the next crisis resolves. The `at` field
     // lets the client dismiss the banner after ~6s without needing a
     // dedicated clear mutation.
     lastProtectionEvents: v.optional(v.array(v.object({

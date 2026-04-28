@@ -139,8 +139,8 @@ export const SCENARIOS: Scenario[] = [
         descriptionC2: "Just before the surge, you face a choice. Stay on channel and your module takes the hit, but the station sees what is next. Stay dark and your module holds, but the crew flies blind.",
       },
       engineer: {
-        label: "Engineer", icon: "\u{1F527}",
-        description: "You are the Engineer. You decide how the station is armored and how it is rewired.",
+        label: "Reactor Engineer", icon: "\u{1F527}",
+        description: "You are the Reactor Engineer. You decide how the station is armored and how it is rewired.",
         descriptionC1: "Before the surge hits, armor one module so the next surge cannot touch it.",
         descriptionC2: "After the surge hits, specify what kind of corridor each broken pair must reinstall. Options are filtered to kinds that pair has not built before.",
       },
@@ -636,8 +636,9 @@ export interface Ability {
   description: string;     // identity line shown before a crisis is relevant
   descriptionC1: string;   // what the player does during Crisis 1 (shown pre-C1)
   descriptionC2: string;   // what the player does during Crisis 2 (shown only at role rotation)
-  hrNote: string;          // what the facilitator sees (why to assign this)
-  mechanic: string;        // technical description of the game effect
+  hrNote: string;          // legacy field, retained for the gallery/dev page only
+  mechanic: string;        // legacy field, retained for the gallery/dev page only
+  assignmentHint: string;  // 1-sentence personality hint shown on the HR setup card. No mechanic detail.
 }
 
 export const ABILITIES: Ability[] = [
@@ -650,6 +651,7 @@ export const ABILITIES: Ability[] = [
     descriptionC2: "After the crisis hits, pick one damaged pair to fully restore. They skip the rebuild. You cannot pick yourself.",
     hrNote: "The Mender's choice is made after damage is visible, so it is unambiguously political: who they rescue, and who they leave to rebuild. Watch whether their pattern of rescues feels fair to the team across both crises.",
     mechanic: "After damage resolves each crisis, picks one damaged dyad to restore its original connection. Cannot target a dyad they are part of.",
+    assignmentHint: "Best for someone comfortable making a visible call between teammates. Whatever they decide, the rest of the team will see who got chosen and who did not.",
   },
   {
     id: "scout",
@@ -658,18 +660,20 @@ export const ABILITIES: Ability[] = [
     description: "You are the Scout. You see what is about to happen before anyone else does.",
     descriptionC1: "Just before the crisis lands you privately see which connections will break. Choose: DM one at-risk teammate a warning, or post the count to team chat.",
     descriptionC2: "Just before the crisis lands you face a binary call. REVEAL and your district breaks but you expose what the team needs to see next. PROTECT and your district is spared but the team goes in blind.",
-    hrNote: "The Scout holds private information no one else has, and their first move reveals how they share or trade that advantage. Their Crisis 2 choice forces a visible values call under pressure: sacrifice themselves to help the team, or protect themselves and keep the Ch3 pattern hidden.",
-    mechanic: "C1: sees damage preview. Can DM one at-risk player OR post the damage count to team chat. C2: binary choice, REVEAL the Ch3 pattern (own district breaks) OR PROTECT self (district spared, no pattern reveal).",
+    hrNote: "The Scout holds private information no one else has, and their first move reveals how they share or trade that advantage. Their Crisis 2 choice forces a visible values call under pressure: sacrifice themselves to help the team, or protect themselves and keep the Chapter 3 pattern hidden.",
+    mechanic: "C1: sees damage preview. Can DM one at-risk player OR post the damage count to team chat. C2: binary choice, REVEAL the Chapter 3 pattern (own district breaks) OR PROTECT self (district spared, no pattern reveal).",
+    assignmentHint: "Best for someone who handles ambiguity well. They will be the only one in the room with the answer, and the choice of what to share with the team is theirs.",
   },
   {
     id: "engineer",
     label: "Engineer",
     icon: "\u{1F527}",
     description: "You are the Engineer. You decide how the team weathers what is coming.",
-    descriptionC1: "Before the crisis hits, pick one teammate's district to pre-shield. Whatever they would lose next, they keep.",
+    descriptionC1: "After the crisis hits, pick the new connection type each broken pair must rebuild with. Your choices are filtered to types that specific player has not built before.",
     descriptionC2: "After the crisis hits, pick the new connection type each broken pair must rebuild with. Your choices are filtered to types that specific player has not built before.",
-    hrNote: "The Engineer makes two decisions the team will remember: who deserves a shield for the harder crisis, and how each damaged pair must recover. Watch whether their choices follow strategy, favoritism, or a visible pattern.",
-    mechanic: "C1: picks one player whose district is immune from C2 damage. C2: picks a new connection type for each destroyed dyad, filtered to types that player has not built before.",
+    hrNote: "The Engineer's choice is post-damage and per-pair: how each broken connection is reshaped tells you whose recovery the Engineer is steering, and whether the pattern of choices follows strategy or favoritism.",
+    mechanic: "Each crisis, after damage resolves, picks a new connection type for every destroyed dyad, filtered to types that pair has not already built.",
+    assignmentHint: "Best for someone systematic who likes a constraint puzzle. They will be making several technical, per-teammate calls back to back under a tight clock.",
   },
   {
     id: "anchor",
@@ -680,16 +684,18 @@ export const ABILITIES: Ability[] = [
     descriptionC2: "When the crisis hits, pick which of your two linked teammates gets immunity this round. The other stays in the damage pool.",
     hrNote: "The Anchor shields one teammate each crisis and refuses another: a visible call that concentrates social capital. Observe who they protect and whether their pattern shifts between Crisis 1 and Crisis 2.",
     mechanic: "Must build 2 connections in the connection-phase. Each crisis picks one of their connected players to be excluded from that crisis's damage pool.",
+    assignmentHint: "Pick someone with strong existing relationships across the team. Their job is choosing whose connection to protect when they cannot protect everyone.",
   },
   {
     id: "diplomat",
     label: "Diplomat",
     icon: "\u{1F91D}",
     description: "You are the Diplomat. When the team goes silent, only you can bring the voices back.",
-    descriptionC1: "When the crisis hits, team chat goes dark. You run a 15-second mini-game: tap each muted teammate to bring them back. In the first 12 seconds the game may re-mute people at random.",
-    descriptionC2: "When the crisis hits, team chat goes dark. You run a 15-second mini-game: tap each muted teammate to bring them back. In the first 12 seconds the game may re-mute people at random.",
+    descriptionC1: "When the crisis hits, team chat goes dark. You run a 16-second mini-game: tap each muted teammate to bring them back. The game may re-mute people at random for the first 15 seconds, then there is a 1-second grace tail to lock in the win.",
+    descriptionC2: "When the crisis hits, team chat goes dark. You run a 16-second mini-game: tap each muted teammate to bring them back. The game may re-mute people at random for the first 15 seconds, then there is a 1-second grace tail to lock in the win.",
     hrNote: "The Diplomat owns the team's communication lifeline during every crisis, and their pace sets the team's ability to coordinate. Watch whether they prioritize speed, specific teammates, or methodical coverage as the mini-game re-mutes players at random.",
-    mechanic: "Chat-immune during mute windows. Runs a 15-second unmute mini-game each crisis: must tap each muted teammate while the game randomly re-mutes them during the first 12 seconds.",
+    mechanic: "Chat-immune during mute windows. Runs a 16-second unmute mini-game each crisis: must tap each muted teammate while the game randomly re-mutes them during the first 15 seconds, with a 1-second grace tail before the hard stop.",
+    assignmentHint: "Pick a fast, attentive communicator who is at home being the chat hub while juggling many threads at once.",
   },
   {
     id: "citizen",
@@ -699,7 +705,8 @@ export const ABILITIES: Ability[] = [
     descriptionC1: "When the crisis hits, cast a vote to destroy one teammate's district. If there are two of you, both votes must match the same target for it to count.",
     descriptionC2: "When the crisis hits, cast a vote to destroy one teammate's district. If there are two of you, both votes must match the same target for it to count.",
     hrNote: "The Citizen's only move is a destructive vote, which forces every teammate to justify why they should be spared. With two Citizens, the need to agree produces audible negotiation: watch both the vote and the talk that leads to it.",
-    mechanic: "One vote per crisis to destroy a target's district. Cannot target Engineer-shielded or Anchor-immune players. With 2 Citizens, agreement required, else the vote is nullified.",
+    mechanic: "One vote per crisis to destroy a target's district. Cannot target Anchor-immune players. With 2 Citizens, agreement required, else the vote is nullified.",
+    assignmentHint: "Pick someone whose voice the team will actually weigh, even if they are not a usual leader. The vote lands hardest on the unexpected.",
   },
 ];
 
@@ -959,7 +966,7 @@ export const STORY_TEXT: Record<string, Record<string, { title: string; narratio
 };
 
 // ── Hidden Patterns ──────────────────────────────────────────
-// Revealed in map_ch3. Players rearrange connections to match.
+// Revealed in map_ch3. Players build connections to match.
 // Each pattern is a set of required connection pairs (slot IDs).
 
 export interface HiddenPattern {
@@ -1335,7 +1342,9 @@ export function getConnectionTypesForTheme(theme: string): ConnectionType[] {
 // The connection becomes "built" only when both sides have uploaded.
 export const PER_CONNECTION_BUILD_SECONDS = 120;
 
-// Diplomat unmute mini-game timing.
-export const DIPLOMAT_UNMUTE_TOTAL_MS = 15_000;
-export const DIPLOMAT_UNMUTE_CHAOS_END_MS = 12_000;   // after this, no more re-mutes
+// Diplomat unmute mini-game timing. 15s of chaos where the server may
+// re-mute, then a 1s grace tail (no re-mutes) so the Diplomat can finish
+// clearing without the rug pulling out. Hard stop at TOTAL_MS.
+export const DIPLOMAT_UNMUTE_TOTAL_MS = 16_000;
+export const DIPLOMAT_UNMUTE_CHAOS_END_MS = 15_000;
 export const DIPLOMAT_UNMUTE_MAX_REMUTES_PER_PLAYER = 2;
