@@ -6,11 +6,13 @@ import { api } from "../../convex/_generated/api";
 import { CLUE_CARDS, PAIR_BUILD_ROUNDS, SCENARIOS, DISTRICT_BANNED_WORDS } from "../../lib/constants";
 import { getClueIllustration } from "./ClueIllustrations";
 import { playSound } from "../../lib/sound";
+import { isDevHost } from "../../lib/env";
 import { toast } from "sonner";
 import { useGame } from "../GameContext";
 import BrandBar from "./BrandBar";
 import { compressDataUrl } from "./cameraFallback";
 import { getDistrictIllustration } from "./DistrictIllustrations";
+import { ClueCardPickGlyph, BrickGlyph, SwapRolesGlyph } from "./Glyphs";
 
 // ── Timer Display ──
 function Timer({ deadline }: { deadline: number | undefined }) {
@@ -238,6 +240,7 @@ export default function PairBuildScreen() {
     if (typeof window === "undefined" || !introKey) return true;
     return window.sessionStorage.getItem(introKey) !== "1";
   });
+  const [introIdx, setIntroIdx] = useState(0);
   function dismissIntro() {
     setShowIntro(false);
     if (typeof window !== "undefined" && introKey) window.sessionStorage.setItem(introKey, "1");
@@ -341,6 +344,7 @@ export default function PairBuildScreen() {
   // for the round lands.
   const expiredHandledForKeyRef = useRef<string | null>(null);
   const [deadlineExpired, setDeadlineExpired] = useState(false);
+  const triggerRound3Grace = useMutation(api.pairBuild.triggerRound3Grace);
   useEffect(() => {
     const deadline = session?.subPhaseDeadline;
     if (!sessionId || !deadline || session?.phase !== "pair_build") {
@@ -362,6 +366,13 @@ export default function PairBuildScreen() {
         setPhoto(null);
         setLegoVerified(false);
       }
+      // Round 3 build expiry: ask the server for a one-shot grace extension so
+      // every district lands a photo. Idempotent server-side; safe if multiple
+      // clients race.
+      if (stageAtStart === "build" && roundAtStart === 3 && sessionId
+        && !session?.round3GraceActive) {
+        triggerRound3Grace({ sessionId }).catch(() => {});
+      }
     };
 
     const msLeft = deadline - Date.now();
@@ -369,7 +380,7 @@ export default function PairBuildScreen() {
     setDeadlineExpired(false);
     const t = setTimeout(onExpire, msLeft);
     return () => clearTimeout(t);
-  }, [session?.subPhaseDeadline, session?.phase, currentRound, currentStage, sessionId, photo, playerId, hasPhotoThisRound, uploadBuildPhoto]);
+  }, [session?.subPhaseDeadline, session?.phase, currentRound, currentStage, sessionId, photo, playerId, hasPhotoThisRound, uploadBuildPhoto, session?.round3GraceActive, triggerRound3Grace]);
 
   // Stage flipping drives the screen split (clue vs build), so no tab state.
 
@@ -412,7 +423,12 @@ export default function PairBuildScreen() {
   async function processCapturedDataUrl(dataUrl: string) {
     playSound("photo");
     setPhoto(dataUrl); setLegoVerified(false);
-    if (process.env.NEXT_PUBLIC_SKIP_DETECTION) { setLegoVerified(true); return; }
+    // Skip the paid detection call on localhost to avoid burning credits during
+    // dev. Production runs detection as before.
+    if (isDevHost()) {
+      setLegoVerified(true);
+      return;
+    }
     setDetecting(true);
     try {
       const result = await detectBlocks({ imageBase64: dataUrl.split(",")[1] });
@@ -478,7 +494,6 @@ export default function PairBuildScreen() {
   const activeMessages = effectiveChatTab === "toBuilder" ? archMsgs : buildMsgs;
   const myLabel = effectiveChatTab === "toBuilder" ? "You (Architect)" : "You (Builder)";
   const theirLabel = effectiveChatTab === "toBuilder" ? "Builder" : "Architect";
-  const partnerName = effectiveChatTab === "toBuilder" ? architectFor?.name : builderFor?.name;
   // Unread ping counts per tab. A message is "unread" if it's in the inactive
   // tab, was sent by the partner (not me), and its creation time is newer
   // than the last time we viewed that tab.
@@ -560,7 +575,7 @@ export default function PairBuildScreen() {
     }
 
     return (
-      <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", background: "var(--bg0)", color: "white", maxWidth: isDesktop ? 1280 : undefined, margin: isDesktop ? "0 auto" : undefined, width: isDesktop ? "100%" : undefined }}>
+      <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", background: "var(--bg0)", color: "white" }}>
         <BrandBar badge="FACILITATOR" />
 
         {/* Header */}
@@ -700,7 +715,7 @@ export default function PairBuildScreen() {
   // Player with no pairing (shouldn't happen in normal flow, but guards against stale state)
   if (me && !architectFor && !builderFor) {
     return (
-      <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", background: "var(--bg0)", color: "white", maxWidth: isDesktop ? 1280 : undefined, margin: isDesktop ? "0 auto" : undefined, width: isDesktop ? "100%" : undefined }}>
+      <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", background: "var(--bg0)", color: "white" }}>
         <BrandBar />
         <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24, textAlign: "center", gap: 10 }}>
           <div style={{ fontSize: 36 }}>{"\u{1F517}"}</div>
@@ -716,119 +731,95 @@ export default function PairBuildScreen() {
   }
 
   return (
-    <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", background: "var(--bg0)", color: "white", maxWidth: isDesktop ? 1280 : undefined, margin: isDesktop ? "0 auto" : undefined, width: isDesktop ? "100%" : undefined }}>
+    <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", background: "var(--bg0)", color: "white" }}>
       <BrandBar />
       <canvas ref={canvasRef} style={{ display: "none" }} />
 
-      {/* ── Blocking pair-build explainer (requires explicit tap) ── */}
-      {showIntro && role === "player" && (
-        <div
-          style={{
-            position: "fixed", inset: 0, background: "rgba(6,6,26,.97)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            padding: 20, zIndex: 500, overflowY: "auto",
-            animation: "fadeIn .3s ease-out",
-          }}
-        >
-          <div style={{ maxWidth: 440, width: "100%" }}>
+      {/* ── Blocking pair-build explainer: 3-panel carousel ── */}
+      {showIntro && role === "player" && (() => {
+        const introPanels: Array<{ glyph: React.ReactNode; headline: string; body: string }> = [
+          { glyph: <ClueCardPickGlyph size={160} />, headline: "PICK A CLUE",            body: "You get six clue cards. Each round, pick one and send it to your partner. They will use only your clue to build with LEGO." },
+          { glyph: <BrickGlyph size={160} />,        headline: "YOUR PARTNER'S TURN",    body: "At the same time, your partner sends you a clue. Build with LEGO from their clue. When you finish, take a photo and send it back." },
+          { glyph: <SwapRolesGlyph size={160} />,    headline: "THREE ROUNDS, ONE BUILD", body: "There are three rounds with the same partner. You keep adding to the same build each round. Each new clue adds a little more detail, so by the end your build matches what your partner imagined." },
+        ];
+        const isLast = introIdx === introPanels.length - 1;
+        const panel = introPanels[introIdx];
+        return (
+          <div
+            style={{
+              position: "fixed", inset: 0, background: "rgba(6,6,26,.97)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              padding: 16, zIndex: 500, overflowY: "auto",
+              animation: "fadeIn .3s ease-out",
+              fontFamily: "'Nunito', sans-serif",
+            }}
+          >
             <div style={{
-              fontFamily: "'Black Han Sans', sans-serif", fontSize: 22, letterSpacing: 2,
-              color: "var(--acc1)", marginBottom: 6, textAlign: "center",
+              width: "min(480px, 94vw)",
+              background: "linear-gradient(180deg, rgba(14,14,37,1), rgba(8,8,22,1))",
+              border: "2px solid rgba(255,215,0,.45)", borderRadius: 16,
+              padding: 22, color: "white",
+              boxShadow: "0 24px 48px rgba(0,0,0,.55)",
             }}>
-              HOW PAIR BUILD WORKS
-            </div>
-            <div style={{ fontSize: 12, color: "var(--textd)", marginBottom: 18, textAlign: "center", lineHeight: 1.5 }}>
-              You&apos;ll play{" "}
-              <strong style={{ color: "var(--acc1)" }}>both roles</strong>
-              {" "}at the same time. You give clues to one player while another player gives clues to you.
-            </div>
-
-            {/* Step diagram */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
               <div style={{
-                background: "rgba(255,215,0,.08)", border: "1px solid rgba(255,215,0,.3)",
-                borderRadius: "var(--brick-radius)", padding: "12px 14px",
-                display: "flex", gap: 12, alignItems: "flex-start",
+                display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center",
+                minHeight: 360, justifyContent: "center",
               }}>
+                <div style={{ marginBottom: 12 }}>{panel.glyph}</div>
                 <div style={{
-                  flexShrink: 0, width: 28, height: 28, borderRadius: 14,
-                  background: "var(--acc1)", color: "#0a0a12",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontFamily: "'Black Han Sans', sans-serif", fontSize: 13,
-                }}>1</div>
-                <div>
-                  <div style={{ fontSize: 11, color: "var(--acc1)", fontWeight: 900, letterSpacing: 2, marginBottom: 4 }}>
-                    {"\u{1F3A8}"} YOU PICK A CLUE CARD
-                  </div>
-                  <div style={{ fontSize: 12, color: "white", lineHeight: 1.5 }}>
-                    You have 30 to 45 seconds to pick one of six clue cards and send it to your builder. The clue hints at the shape you want them to build.
-                  </div>
+                  fontFamily: "'Black Han Sans', sans-serif", fontSize: 22, letterSpacing: 2.4,
+                  color: "var(--acc1, #FFD700)", marginBottom: 8,
+                }}>
+                  {panel.headline}
+                </div>
+                <div style={{ fontSize: 13, color: "rgba(255,255,255,.85)", lineHeight: 1.55, maxWidth: 320 }}>
+                  {panel.body}
                 </div>
               </div>
 
-              <div style={{
-                background: "rgba(79,195,247,.08)", border: "1px solid rgba(79,195,247,.3)",
-                borderRadius: "var(--brick-radius)", padding: "12px 14px",
-                display: "flex", gap: 12, alignItems: "flex-start",
-              }}>
-                <div style={{
-                  flexShrink: 0, width: 28, height: 28, borderRadius: 14,
-                  background: "var(--acc2)", color: "#0a0a12",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontFamily: "'Black Han Sans', sans-serif", fontSize: 13,
-                }}>2</div>
-                <div>
-                  <div style={{ fontSize: 11, color: "var(--acc2)", fontWeight: 900, letterSpacing: 2, marginBottom: 4 }}>
-                    {"\u{1F9F1}"} YOU BUILD (from someone else&apos;s clue)
-                  </div>
-                  <div style={{ fontSize: 12, color: "white", lineHeight: 1.5 }}>
-                    At the same time, your own architect sends you a clue. You have 2 to 3 minutes to build it with LEGO and snap a photo.
-                  </div>
-                </div>
+              <div style={{ display: "flex", gap: 6, justifyContent: "center", margin: "16px 0" }}>
+                {introPanels.map((_, i) => (
+                  <span key={i} style={{
+                    width: 8, height: 8, borderRadius: 4,
+                    background: i === introIdx ? "var(--acc1, #FFD700)" : "rgba(255,255,255,.2)",
+                  }} />
+                ))}
               </div>
 
-              <div style={{
-                background: "rgba(105,240,174,.08)", border: "1px solid rgba(105,240,174,.25)",
-                borderRadius: "var(--brick-radius)", padding: "12px 14px",
-                display: "flex", gap: 12, alignItems: "flex-start",
-              }}>
-                <div style={{
-                  flexShrink: 0, width: 28, height: 28, borderRadius: 14,
-                  background: "var(--acc4)", color: "#0a0a12",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontFamily: "'Black Han Sans', sans-serif", fontSize: 13,
-                }}>3</div>
-                <div>
-                  <div style={{ fontSize: 11, color: "var(--acc4)", fontWeight: 900, letterSpacing: 2, marginBottom: 4 }}>
-                    {"\u{1F501}"} REPEAT 3 TIMES
-                  </div>
-                  <div style={{ fontSize: 12, color: "white", lineHeight: 1.5 }}>
-                    Three clue rounds total. Each round, your clue adds more detail. Their build gets closer to what you wanted.
-                  </div>
-                </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                {introIdx > 0 && (
+                  <button
+                    onClick={() => setIntroIdx(i => i - 1)}
+                    style={{
+                      flex: 1, padding: "12px 14px", borderRadius: 8,
+                      fontSize: 12, fontWeight: 900, letterSpacing: 1.2, textTransform: "uppercase",
+                      cursor: "pointer", fontFamily: "'Nunito', sans-serif",
+                      background: "rgba(255,255,255,.04)",
+                      border: "1.5px solid rgba(255,255,255,.2)",
+                      color: "rgba(255,255,255,.8)",
+                    }}
+                  >
+                    Back
+                  </button>
+                )}
+                <button
+                  onClick={() => isLast ? dismissIntro() : setIntroIdx(i => i + 1)}
+                  style={{
+                    flex: 2, padding: "12px 14px", borderRadius: 8,
+                    fontSize: 12, fontWeight: 900, letterSpacing: 1.2, textTransform: "uppercase",
+                    cursor: "pointer", fontFamily: "'Nunito', sans-serif",
+                    background: "rgba(255,215,0,.22)",
+                    border: "1.5px solid rgba(255,215,0,.6)",
+                    color: "var(--acc1, #FFD700)",
+                  }}
+                >
+                  {isLast ? <>I&apos;M READY {"→"}</> : "Next"}
+                </button>
               </div>
             </div>
-
-            <div style={{
-              background: "rgba(255,255,255,.04)", border: "1px solid var(--border)",
-              borderRadius: "var(--brick-radius)", padding: "10px 14px", marginBottom: 16,
-              fontSize: 11, color: "var(--textd)", lineHeight: 1.6,
-            }}>
-              {"\u{1F4AC}"}{" "}
-              <strong style={{ color: "white" }}>Chat stays open the whole time.</strong>
-              {" "}You can talk to your pair any round. Some words give the answer away. You&apos;ll see which words to avoid.
-            </div>
-
-            <button
-              className="lb lb-yellow"
-              onClick={dismissIntro}
-              style={{ width: "100%", padding: "14px 0", fontSize: 14, letterSpacing: 2 }}
-            >
-              I&apos;M READY {"\u2192"}
-            </button>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── Clue detail modal (animated like card modal) ── */}
       {expandedClueData && (
@@ -909,6 +900,17 @@ export default function PairBuildScreen() {
           {isClueStage ? "\u{1F3A8} CLUE STAGE. Architects pick a clue." : "\u{1F9F1} BUILD STAGE. Builders build!"}
         </div>
         <Timer deadline={session?.subPhaseDeadline} />
+        {currentRound === 3 && isBuildStage && session?.round3GraceActive && (
+          <div style={{
+            marginTop: 8, padding: "8px 14px",
+            background: "rgba(255,167,38,.14)", border: "1px solid rgba(255,167,38,.55)",
+            borderRadius: 8, color: "#FFB74D", fontSize: 11, fontWeight: 800,
+            letterSpacing: 1.4, lineHeight: 1.5, textTransform: "uppercase",
+            textAlign: "center",
+          }}>
+            Grace window — Final Round needs every photo. Upload now.
+          </div>
+        )}
         {/* Pass #26: deadline-expired state. Show a force-CTA to anyone who
             still owes a submission this round, and a waiting list to
             everyone else. The round only advances when the last submission
@@ -1048,7 +1050,7 @@ export default function PairBuildScreen() {
                       {architectFor.districtName || "Unnamed " + scenarioData.terminology.district}
                     </div>
                     <div style={{ fontSize: 12, color: "var(--textd)", marginTop: 2 }}>
-                      {architectFor.name} is building this. Send clues to guide them.
+                      Your builder is building this. Send clues to guide them.
                     </div>
                   </div>
                 </div>
@@ -1070,7 +1072,7 @@ export default function PairBuildScreen() {
                     fontFamily: "'Black Han Sans', sans-serif", fontSize: 10, letterSpacing: 2,
                     color: "var(--acc2)", textTransform: "uppercase",
                   }}>
-                    Clue received from {builderFor?.name ?? "your architect"}
+                    Clue received from your architect
                   </div>
                   <div style={{ fontSize: 11, color: "var(--textd)", marginTop: 2 }}>
                     It opens in the build stage. Send your own clue first.
@@ -1188,7 +1190,7 @@ export default function PairBuildScreen() {
                     </div>
                     <div style={{ display: "flex", gap: 8 }}>
                       <button className="lb lb-green" style={{ flex: 1, fontSize: 12, padding: "10px 0" }} onClick={handleSendClue}>
-                        SEND TO {architectFor?.name?.toUpperCase() || "BUILDER"}
+                        SEND TO BUILDER
                       </button>
                       <button className="lb lb-ghost" style={{ fontSize: 12, padding: "10px 14px" }} onClick={() => setSelectedClue(null)}>
                         CHANGE
@@ -1397,7 +1399,7 @@ export default function PairBuildScreen() {
                   fontFamily: "'Black Han Sans', sans-serif", fontSize: 10,
                   letterSpacing: 2, color: "var(--textd)", textTransform: "uppercase", marginBottom: 8,
                 }}>
-                  {architectFor?.name}&apos;s Progress
+                  Builder&apos;s Progress
                 </div>
                 <div style={{ display: "flex", gap: 8, overflowX: "auto" }}>
                   {builderPhotos.sort((a, b) => a.round - b.round).map((p) => (
@@ -1444,7 +1446,7 @@ export default function PairBuildScreen() {
                     You are the builder
                   </div>
                   <div style={{ fontSize: 16, fontWeight: 800, color: scenarioData.color, marginTop: 4 }}>
-                    {builderFor.name} is sending you clues
+                    Your architect is sending you clues
                   </div>
                   <div style={{ fontSize: 12, color: "var(--textd)", marginTop: 2 }}>
                     Read the clues below. Build with LEGO, then photograph. You will not know what it is until the reveal.
@@ -1708,7 +1710,7 @@ export default function PairBuildScreen() {
               <TabButton
                 active={effectiveChatTab === "toBuilder"}
                 onClick={() => setChatTab("toBuilder")}
-                label={`To Builder${architectFor?.name ? ": " + architectFor.name : ""}`}
+                label="To Builder"
                 count={(archMsgs ?? []).length}
                 unread={unreadToBuilder}
                 accent="var(--acc1)"
@@ -1718,7 +1720,7 @@ export default function PairBuildScreen() {
               <TabButton
                 active={effectiveChatTab === "toArchitect"}
                 onClick={() => setChatTab("toArchitect")}
-                label={`To Architect${builderFor?.name ? ": " + builderFor.name : ""}`}
+                label="To Architect"
                 count={(buildMsgs ?? []).length}
                 unread={unreadToArchitect}
                 accent="var(--acc2)"
@@ -1739,8 +1741,8 @@ export default function PairBuildScreen() {
               textTransform: "uppercase",
             }}>
               {"\u{1F4AC}"} {effectiveChatTab === "toBuilder"
-                ? `You are sending clues to ${partnerName ?? "your builder"}`
-                : `${partnerName ?? "your architect"} is sending clues to you`}
+                ? "You are sending clues to your builder"
+                : "Your architect is sending clues to you"}
             </div>
             <div style={{ fontSize: 9, color: "var(--textdd)", fontWeight: 800, letterSpacing: 1 }}>
               ANONYMOUS
@@ -1830,7 +1832,7 @@ export default function PairBuildScreen() {
             <input
               className="chat-input"
               type="text"
-              placeholder={effectiveChatTab === "toBuilder" ? `Message ${architectFor?.name ?? "your builder"}\u2026` : `Message ${builderFor?.name ?? "your architect"}\u2026`}
+              placeholder={effectiveChatTab === "toBuilder" ? "Message your builder\u2026" : "Message your architect\u2026"}
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
               style={{ flex: 1 }}

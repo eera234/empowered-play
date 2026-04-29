@@ -13,11 +13,16 @@ interface Props {
   playerInTargetMap: Record<string, boolean>;
   patternName?: string;
   allComplete: boolean;
+  // The local player's id, used to highlight "your" slot distinctly so each
+  // player knows where to drop. Optional — facilitator passes undefined.
+  localPlayerId?: string;
 }
 
 // Draws the target polygon outline + per-slot marker. Slots glow blue when a
 // player's district is in them, and the whole shape glows gold when complete.
-export default function PatternOverlay({ slots, playerInTargetMap, patternName, allComplete }: Props) {
+// The local player's slot is rendered with a gold ring + "YOU" label so each
+// player can find their own target without confusing it with neighbours'.
+export default function PatternOverlay({ slots, playerInTargetMap, patternName, allComplete, localPlayerId }: Props) {
   if (slots.length < 3) return null;
   const edges: { x1: number; y1: number; x2: number; y2: number; complete: boolean }[] = [];
   for (let i = 0; i < slots.length; i++) {
@@ -34,9 +39,11 @@ export default function PatternOverlay({ slots, playerInTargetMap, patternName, 
     });
   }
 
-  const edgeColor = (done: boolean) => (allComplete ? "#FFD700" : done ? "#5AC8FA" : "rgba(255,255,255,.45)");
+  const edgeColor = (done: boolean) => (allComplete ? "#FFD700" : done ? "#5AC8FA" : "rgba(255,255,255,.75)");
   const edgeStroke = allComplete ? "3" : "2";
   const edgeDasharray = (done: boolean) => (done ? "0" : "4 4");
+
+  const mySlot = localPlayerId ? slots.find(s => s.assignedTo === localPlayerId) : undefined;
 
   return (
     <>
@@ -71,15 +78,29 @@ export default function PatternOverlay({ slots, playerInTargetMap, patternName, 
         ))}
         {slots.map((s) => {
           const inSlot = s.assignedTo ? !!playerInTargetMap[s.assignedTo] : false;
+          const isMine = !!localPlayerId && s.assignedTo === localPlayerId;
           return (
             <g key={s.slotId}>
+              {isMine && !allComplete && (
+                <circle
+                  cx={s.x}
+                  cy={s.y}
+                  r="5.4"
+                  fill="none"
+                  stroke="#FFD700"
+                  strokeWidth="0.8"
+                  strokeOpacity={0.7}
+                  vectorEffect="non-scaling-stroke"
+                  style={{ animation: "patternMyPulse 1.6s ease-in-out infinite" }}
+                />
+              )}
               <circle
                 cx={s.x}
                 cy={s.y}
-                r={allComplete ? "3.2" : inSlot ? "2.8" : "2.2"}
-                fill={allComplete ? "#FFD700" : inSlot ? "#5AC8FA" : "rgba(255,255,255,.18)"}
-                stroke={allComplete ? "#FFF" : inSlot ? "#FFF" : "rgba(255,255,255,.55)"}
-                strokeWidth="0.5"
+                r={allComplete ? "3.2" : isMine ? "3.4" : inSlot ? "3.0" : "2.8"}
+                fill={allComplete ? "#FFD700" : isMine ? "#FFD700" : inSlot ? "#5AC8FA" : "rgba(255,255,255,.42)"}
+                stroke={allComplete ? "#FFF" : isMine ? "#FFF" : inSlot ? "#FFF" : "rgba(255,255,255,.95)"}
+                strokeWidth={allComplete || inSlot || isMine ? "0.8" : "1"}
                 vectorEffect="non-scaling-stroke"
                 style={{ transition: "fill .3s ease, r .3s ease" }}
               />
@@ -87,6 +108,37 @@ export default function PatternOverlay({ slots, playerInTargetMap, patternName, 
           );
         })}
       </svg>
+      {mySlot && !allComplete && (
+        <div
+          style={{
+            position: "absolute",
+            left: `${mySlot.x}%`,
+            top: `${mySlot.y}%`,
+            transform: "translate(-50%, -150%)",
+            zIndex: 7,
+            pointerEvents: "none",
+            fontFamily: "'Black Han Sans', sans-serif",
+            fontSize: 9,
+            letterSpacing: 2,
+            color: "#FFD700",
+            background: "rgba(10,10,18,.85)",
+            border: "1px solid rgba(255,215,0,.5)",
+            padding: "2px 7px",
+            borderRadius: 999,
+            textTransform: "uppercase",
+            textShadow: "0 0 6px rgba(255,215,0,.5)",
+            whiteSpace: "nowrap",
+          }}
+        >
+          You
+        </div>
+      )}
+      <style>{`
+        @keyframes patternMyPulse {
+          0%, 100% { stroke-opacity: 0.35; }
+          50% { stroke-opacity: 0.95; }
+        }
+      `}</style>
       {/* Pass #19: pull the "<PATTERN> COMPLETE" banner out of the SVG.
           The SVG uses preserveAspectRatio="none" so the map can fill any
           container shape, which stretched the SVG <text> horizontally.

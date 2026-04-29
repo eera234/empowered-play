@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useRef, useEffect, MouseEvent, TouchEvent } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
-import { SCENARIOS, STORY_TEXT, ABILITIES, CRISIS_CARDS, POWER_CARDS, getThemedAbility, CH1_PLACEMENT_SECONDS, CH1_SLOT_RIDDLES, CONNECTION_TYPES } from "../../lib/constants";
+import { SCENARIOS, STORY_TEXT, ABILITIES, CRISIS_CARDS, getThemedAbility, CH1_PLACEMENT_SECONDS, CH1_SLOT_RIDDLES, CONNECTION_TYPES } from "../../lib/constants";
 import { playSound } from "../../lib/sound";
+import { isDevHost } from "../../lib/env";
 import { toast } from "sonner";
 import { useGame } from "../GameContext";
 import BrandBar from "./BrandBar";
@@ -14,7 +15,6 @@ import InAppCamera from "./InAppCamera";
 import MapChatPanel from "./MapChatPanel";
 import AbilityBadge from "./AbilityBadge";
 import { getCrisisIllustration } from "./CrisisIllustrations";
-import { getPowerIllustration } from "./PowerIllustrations";
 import { Ch1BriefingOverlay } from "./Ch1BriefingOverlay";
 import Ch2Pass13Overlays from "./Ch2Pass13Overlays";
 import PatternOverlay from "./PatternOverlay";
@@ -110,7 +110,7 @@ export default function StoryMapScreen() {
   // Pass #18: resolveCrisisDamage no longer called from the client; damage
   // lands automatically via the scheduled announceCrisis internal mutation.
   const rotateRolesForC2 = useMutation(api.mapPhase.rotateRolesForC2);
-  const dealPowerCard = useMutation(api.mapPhase.dealPowerCard);
+  const forceClearCurrentCrisis = useMutation(api.mapPhase.forceClearCurrentCrisis);
   const useSwapPower = useMutation(api.mapPhase.useSwapPower);
   const useShieldPower = useMutation(api.mapPhase.useShieldPower);
   const useMovePower = useMutation(api.mapPhase.useMovePower);
@@ -125,6 +125,7 @@ export default function StoryMapScreen() {
   const uploadConnectionPhotoSide = useMutation(api.mapPhase.uploadConnectionPhotoSide);
   const markConnectionReady = useMutation(api.mapPhase.markConnectionReady);
   const repairDamagedDistrict = useMutation(api.mapPhase.repairDamagedDistrict);
+  const detectBlocks = useAction(api.detectLego.detectBuildingBlocks);
   const useRelayPower = useMutation(api.mapPhase.useRelayPower);
   const useForesightPower = useMutation(api.mapPhase.useForesightPower);
   const markCh2Ready = useMutation(api.mapPhase.markCh2Ready);
@@ -370,7 +371,6 @@ export default function StoryMapScreen() {
   // The string stored in connections.fromSlotId / toSlotId is the player _id.
   const [selectedForConnection, setSelectedForConnection] = useState<string | null>(null); // playerId
   const [facCrisisPickerOpen, setFacCrisisPickerOpen] = useState(false);
-  const [facPowerPickerOpen, setFacPowerPickerOpen] = useState<string | null>(null); // playerId we're dealing to
   // Pass #19: powerModalOpen state and handleUsePower dropped. Powers fire
   // automatically from the server; the player no longer taps "use now". The
   // targeting machinery below is retained only for facilitator-side flows.
@@ -605,18 +605,6 @@ export default function StoryMapScreen() {
     }
     playSound("lego-detected");
     toast("Connection restored");
-  }
-
-  async function handleDealPower(targetPlayerId: string, cardId: string) {
-    if (!sessionId) return;
-    const result = await dealPowerCard({ sessionId, playerId: targetPlayerId as Id<"players">, cardId });
-    if (result?.success === false) {
-      toast(result.error || "Couldn't deal power card");
-      return;
-    }
-    setFacPowerPickerOpen(null);
-    playSound("power-dealt");
-    toast("Power card dealt");
   }
 
   async function handleTargetTapPlayer(targetId: Id<"players">) {
@@ -854,6 +842,7 @@ export default function StoryMapScreen() {
           playersById={Object.fromEntries(
             (players ?? []).map((p) => [p._id as unknown as string, p.name]),
           )}
+          scenarioId={session?.scenario}
         />
       )}
 
@@ -894,16 +883,20 @@ export default function StoryMapScreen() {
           Diplomat timer is running. Tapping a muted teammate unmutes them.
           Pass #32: dismissal driven by onDone (success or timeout) instead of
           server's diplomatUnmuteDone, so the success animation has time to
-          play before un-mount. */}
+          play before un-mount. Also force-dismiss if the crisis already
+          cleared on the server side, so the overlay can never block the map
+          after the rest of the team finishes. */}
       {phase === "map_ch2" && !isFacilitator && myAbility === "diplomat"
         && sessionId && playerId
         && session?.diplomatUnmuteStartedAt
-        && !diplomatDismissed && (
+        && !diplomatDismissed
+        && session?.ch2State === "CH2_CRISIS_ACTIVE" && (
         <DiplomatUnmuteOverlay
           sessionId={sessionId}
           diplomatId={playerId}
           crisisIndex={session.crisisIndex ?? 1}
           startedAt={session.diplomatUnmuteStartedAt}
+          scenarioId={session.scenario ?? ""}
           players={(players ?? [])
             .filter((p) => !p.isFacilitator)
             .map((p) => ({ _id: p._id, name: p.name, ability: p.ability }))}
@@ -967,6 +960,19 @@ export default function StoryMapScreen() {
           onUploaded={async (dataUrl) => {
             if (!playerId) return;
             try {
+              let isLego = true;
+              if (!isDevHost()) {
+                try {
+                  const result = await detectBlocks({ imageBase64: dataUrl.split(",")[1] });
+                  isLego = !!result.isLego;
+                } catch {
+                  isLego = true; // fail-open on action errors
+                }
+              }
+              if (!isLego) {
+                toast("No building blocks detected. Retake with your build in frame.");
+                return;
+              }
               await repairDamagedDistrict({ playerId, photoDataUrl: dataUrl });
               toast("District restored.");
               playSound("clue-sent");
@@ -1055,6 +1061,19 @@ export default function StoryMapScreen() {
               }}
               onPhotoCaptured={async (dataUrl) => {
                 try {
+                  let isLego = true;
+                  if (!isDevHost()) {
+                    try {
+                      const result = await detectBlocks({ imageBase64: dataUrl.split(",")[1] });
+                      isLego = !!result.isLego;
+                    } catch {
+                      isLego = true; // fail-open on action errors
+                    }
+                  }
+                  if (!isLego) {
+                    toast("No building blocks detected. Retake with your build in frame.");
+                    return;
+                  }
                   const r = await uploadConnectionPhotoSide({
                     connectionId: conn._id,
                     playerId: playerId as Id<"players">,
@@ -1182,7 +1201,7 @@ export default function StoryMapScreen() {
           </div>
         </div>
       )}
-      {(phase === "map_ch2" || phase === "map_ch3") && session?.subPhaseDeadline && buildMsLeft === 0 && (
+      {phase === "map_ch2" && session?.subPhaseDeadline && buildMsLeft === 0 && (
         <div style={{
           padding: "6px 14px",
           background: "rgba(105,240,174,.08)",
@@ -1190,6 +1209,16 @@ export default function StoryMapScreen() {
           fontSize: 11, fontWeight: 700, color: "var(--acc4)", textAlign: "center", letterSpacing: 1,
         }}>
           Build time complete. Tap two districts to place your bridge.
+        </div>
+      )}
+      {phase === "map_ch3" && session?.subPhaseDeadline && buildMsLeft === 0 && (
+        <div style={{
+          padding: "6px 14px",
+          background: "rgba(255,167,38,.10)",
+          borderBottom: "1px solid rgba(255,167,38,.4)",
+          fontSize: 11, fontWeight: 700, color: "#FFA726", textAlign: "center", letterSpacing: 1,
+        }}>
+          Time&apos;s up. Tap FORCE COMPLETE if the team is happy with the pattern.
         </div>
       )}
 
@@ -1512,6 +1541,7 @@ export default function StoryMapScreen() {
               playerInTargetMap={inTargetMap}
               patternName={nameForPlayer}
               allComplete={allComplete}
+              localPlayerId={!isFacilitator && playerId ? (playerId as unknown as string) : undefined}
             />
           );
         })()}
@@ -2342,6 +2372,79 @@ export default function StoryMapScreen() {
                     READY: {readyCount}/{presentNonFac.length} {"\u00B7"} CRISES: {dealt}/{cap}
                   </span>
                 )}
+                {(() => {
+                  if (!crisisActive || session?.ch2State !== "CH2_CRISIS_ACTIVE") return null;
+                  const diplomatPresent = !!presentNonFac.find((p) => p.ability === "diplomat");
+                  const diplomatDone = session?.diplomatUnmuteDone === true;
+                  const damagedPairs = (session?.currentCrisisDamagedPairs ?? []) as Array<{ newType?: string }>;
+                  const engineerPresent = !!presentNonFac.find((p) => p.ability === "engineer");
+                  const engineerPickedCount = damagedPairs.filter((p) => !!p.newType).length;
+                  const engineerTotal = damagedPairs.length;
+                  const cidx = session?.crisisIndex ?? 0;
+                  const pendingRebuilds = (connections ?? []).filter((c) => c.destroyedByCrisisIndex === cidx);
+                  const rebuiltCount = pendingRebuilds.filter((c) => c.rebuildValidatedByHR === true).length;
+                  const Leg = ({ label, ok, detail }: { label: string; ok: boolean; detail?: string }) => (
+                    <span style={{
+                      display: "inline-flex", alignItems: "center", gap: 4,
+                      fontSize: 10, letterSpacing: 0.6, color: ok ? "#A6E89B" : "var(--textd)",
+                    }}>
+                      <span style={{ fontWeight: 800 }}>{ok ? "✓" : "·"}</span>
+                      {" "}{label}{detail ? ` ${detail}` : ""}
+                    </span>
+                  );
+                  return (
+                    <span style={{
+                      display: "inline-flex", gap: 10, padding: "4px 10px",
+                      background: "rgba(255,215,0,.06)",
+                      border: "1px solid rgba(255,215,0,.25)",
+                      borderRadius: 6, alignItems: "center",
+                    }}>
+                      {diplomatPresent && (
+                        <Leg label="Diplomat" ok={diplomatDone} detail={diplomatDone ? "" : "(active)"} />
+                      )}
+                      {engineerPresent && engineerTotal > 0 && (
+                        <Leg
+                          label="Engineer"
+                          ok={engineerPickedCount === engineerTotal}
+                          detail={`${engineerPickedCount}/${engineerTotal}`}
+                        />
+                      )}
+                      {pendingRebuilds.length > 0 && (
+                        <Leg
+                          label="Rebuilds"
+                          ok={rebuiltCount === pendingRebuilds.length}
+                          detail={`${rebuiltCount}/${pendingRebuilds.length}`}
+                        />
+                      )}
+                    </span>
+                  );
+                })()}
+                {crisisActive && session?.ch2State === "CH2_CRISIS_ACTIVE" && (
+                  <button
+                    className="lb lb-ghost"
+                    style={{
+                      fontSize: 10, padding: "6px 10px",
+                      borderColor: "rgba(244,67,54,.55)",
+                      color: "#FF8A80",
+                      letterSpacing: 1,
+                    }}
+                    onClick={async () => {
+                      if (!sessionId) return;
+                      if (typeof window !== "undefined" &&
+                          !window.confirm("Force-clear the current crisis? Use only if a player has dropped and the auto-clear is stalled.")) {
+                        return;
+                      }
+                      try {
+                        await forceClearCurrentCrisis({ sessionId });
+                      } catch (e) {
+                        toast((e as Error).message ?? "Could not force clear.");
+                      }
+                    }}
+                    title="Force-clear the current crisis (use only when auto-clear is stalled)"
+                  >
+                    FORCE CLEAR
+                  </button>
+                )}
                 {canRotate && (
                   <button
                     className="lb lb-yellow"
@@ -2450,6 +2553,51 @@ export default function StoryMapScreen() {
               auto-flips when every player lands in their slot. The advance
               button below is renamed to START VOTING for Ch3 and disabled
               until the pattern is complete. */}
+          {/* HR debug strip: visible only during Ch3 to facilitator, while the
+              pattern hasn't auto-completed. Surfaces per-player slot/distance
+              so HR can tell whether placement is failing on tolerance, on a
+              missing slot id, or because players are simply off-target. */}
+          {isFacilitator && isCh3 && !mapRebuilt && (session?.ch3TargetSlots ?? []).length > 0 && (
+            <div style={{
+              fontSize: 10,
+              padding: "6px 10px",
+              borderRadius: 8,
+              border: "1px solid rgba(255,215,64,.4)",
+              background: "rgba(255,215,64,.06)",
+              color: "rgba(255,255,255,.85)",
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+              maxWidth: 320,
+            }}>
+              <div style={{ fontFamily: "'Black Han Sans', sans-serif", fontSize: 9, letterSpacing: 1.4, color: "var(--acc1)", marginBottom: 4 }}>
+                CH3 PLACEMENT
+              </div>
+              {(session?.ch3TargetSlots ?? []).map((ts) => {
+                const assigneeId = ts.assignedTo as unknown as string | undefined;
+                const assignee = assigneeId ? nonFac.find(p => (p._id as unknown as string) === assigneeId) : undefined;
+                const px = assignee?.x;
+                const py = assignee?.y;
+                let distStr = "—";
+                if (px != null && py != null) {
+                  const dx = ts.x - px;
+                  const dy = ts.y - py;
+                  distStr = Math.sqrt(dx * dx + dy * dy).toFixed(1);
+                }
+                const inSlot = !!assignee?.ch3InTargetSlot;
+                return (
+                  <div key={ts.slotId} style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                    <span>{(assignee?.name ?? "—").slice(0, 12)}</span>
+                    <span>{ts.slotId}</span>
+                    <span style={{ color: inSlot ? "#69F0AE" : "rgba(255,255,255,.55)" }}>
+                      {distStr} {inSlot ? "✓" : ""}
+                    </span>
+                  </div>
+                );
+              })}
+              <div style={{ fontSize: 9, color: "rgba(255,255,255,.5)", marginTop: 4 }}>
+                Tolerance: 18. ✓ when distance ≤ 18 and slot id matches.
+              </div>
+            </div>
+          )}
           {/* Pass #31: HR escape hatch when Ch3 placement validation refuses
               to flip. Visible only in Ch3 to facilitators; disabled once the
               pattern is already revealed. */}
@@ -2571,82 +2719,6 @@ export default function StoryMapScreen() {
 
       {/* Pass #21: Scout preview picker removed. The DEAL CRISIS picker now
           stages directly to a Scout-only preview; no separate modal needed. */}
-
-      {/* ── Facilitator: power card dealer ── */}
-      {facPowerPickerOpen && (() => {
-        const target = nonFac.find((p) => p._id === facPowerPickerOpen);
-        if (!target) return null;
-        return (
-          <div className="card-modal-overlay" onClick={() => setFacPowerPickerOpen(null)}>
-            <div className="card-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520 }}>
-              <div className="card-modal-body">
-                <div className="card-modal-title">Deal a Power Card</div>
-                <div style={{ fontSize: 11, color: "var(--textd)", marginBottom: 12 }}>Pick a player, then a card:</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
-                  {nonFac.map((p) => (
-                    <button
-                      key={p._id}
-                      onClick={() => setFacPowerPickerOpen(p._id)}
-                      style={{
-                        padding: "6px 10px", borderRadius: 16,
-                        background: p._id === facPowerPickerOpen ? "var(--acc1)" : "rgba(255,255,255,.05)",
-                        border: "1px solid var(--border)",
-                        color: p._id === facPowerPickerOpen ? "#0a0a12" : "white",
-                        fontSize: 11, fontWeight: 800, cursor: "pointer",
-                      }}
-                    >
-                      {p.name}
-                    </button>
-                  ))}
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {POWER_CARDS.map((c) => {
-                    // Swap and Double Link need at least 3 non-fac players to
-                    // do anything meaningful. Disable them in small sessions.
-                    const minPlayers: Record<string, number> = { pw_swap: 3, pw_double: 3 };
-                    const needed = minPlayers[c.id];
-                    const tooSmall = needed !== undefined && presentNonFac.length < needed;
-                    return (
-                    <button
-                      key={c.id}
-                      onClick={() => !tooSmall && handleDealPower(target._id, c.id)}
-                      disabled={tooSmall}
-                      style={{
-                        textAlign: "left", padding: "12px 14px",
-                        background: tooSmall ? "rgba(255,255,255,.03)" : "rgba(147,51,234,.08)",
-                        border: `1px solid ${tooSmall ? "var(--border)" : "rgba(147,51,234,.3)"}`,
-                        borderRadius: "var(--brick-radius)",
-                        color: tooSmall ? "var(--textdd)" : "white",
-                        cursor: tooSmall ? "not-allowed" : "pointer",
-                        opacity: tooSmall ? 0.55 : 1,
-                      }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <div style={{ flexShrink: 0 }}>
-                          {(() => { const Art = getPowerIllustration(c.id); return <Art size={34} />; })()}
-                        </div>
-                        <span style={{ fontFamily: "'Black Han Sans', sans-serif", fontSize: 13, letterSpacing: 1 }}>
-                          {c.title}
-                        </span>
-                        {tooSmall && (
-                          <span style={{ fontSize: 9, color: "var(--acc3)", fontWeight: 900, letterSpacing: 1 }}>
-                            NEEDS {needed}+ PLAYERS
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: 11, color: "var(--textd)", marginTop: 4 }}>
-                        {c.description}
-                      </div>
-                    </button>
-                    );
-                  })}
-                </div>
-              </div>
-              <button className="card-modal-close" onClick={() => setFacPowerPickerOpen(null)}>CLOSE</button>
-            </div>
-          </div>
-        );
-      })()}
 
       {/* Pass #19: the player-side power-card modal was removed along with
           the on-map power strip. Power info is shown in the top header only. */}

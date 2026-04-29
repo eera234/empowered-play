@@ -1094,7 +1094,22 @@ import {
   DIPLOMAT_UNMUTE_CHAOS_END_MS,
   DIPLOMAT_UNMUTE_MAX_REMUTES_PER_PLAYER,
   CRISIS_CARDS,
+  SCENARIOS,
+  ABILITIES,
+  getThemedAbility,
 } from "../lib/constants";
+
+// Server-side helper: get the themed ability label for a given scenario id.
+// Falls back to the upper-cased ability id (or "ROLE") when scenario or
+// ability lookup misses, so chat lines never expose raw "scout"/"engineer"
+// strings on screen.
+function themedAbilityLabel(scenarioId: string | undefined, abilityId: string): string {
+  const ability = ABILITIES.find(a => a.id === abilityId);
+  if (!ability) return abilityId.toUpperCase();
+  const scenario = scenarioId ? SCENARIOS.find(s => s.id === scenarioId) : undefined;
+  const themed = scenario ? getThemedAbility(ability, scenario) : ability;
+  return (themed.label ?? abilityId).toUpperCase();
+}
 
 function pickRandomFromArray<T>(arr: T[]): T | null {
   if (!arr.length) return null;
@@ -1169,10 +1184,11 @@ export const scoutChooseC1 = mutation({
     // Post message: either DM-like team chat ping or public count.
     if (mode === "public") {
       const damagedCount = (session.damagePreview?.length ?? session.currentCrisisDamagedPairs?.length ?? 0);
+      const senderLabel = themedAbilityLabel(session.scenario, "scout");
       await ctx.db.insert("messages", {
         sessionId,
-        sender: "SCOUT",
-        text: `${damagedCount} connection${damagedCount === 1 ? "" : "s"} will break this crisis. Prepare.`,
+        sender: senderLabel,
+        text: `${damagedCount} connection${damagedCount === 1 ? "" : "s"} will be broken in this crisis. Brace for it.`,
         isFacilitator: false,
       });
     } else if (targetPlayerId) {
@@ -1237,9 +1253,10 @@ export const scoutChooseC2 = mutation({
       const shape = CH3_SHAPE_BY_COUNT[n] ?? "polygon";
       const theme = themeForScenario(session.scenario);
       const name = CH3_PATTERN_NAMES[theme]?.[n] ?? shape;
+      const senderLabel = themedAbilityLabel(session.scenario, "scout");
       await ctx.db.insert("messages", {
         sessionId,
-        sender: "SCOUT",
+        sender: senderLabel,
         text: `Chapter 3 pattern revealed: ${name} (${shape} shape).`,
         isFacilitator: false,
       });
@@ -1335,8 +1352,8 @@ export const diplomatChaosTick = mutation({
     }
 
     if (elapsed > DIPLOMAT_UNMUTE_CHAOS_END_MS) return;
-    // random 40% chance to re-mute per tick
-    if (Math.random() > 0.4) return;
+    // 80% chance to re-mute this tick (was 40%) — drives the back-and-forth
+    if (Math.random() > 0.8) return;
     const rows = await ctx.db
       .query("diplomat_mute_state")
       .withIndex("by_session_and_crisis", q =>
@@ -1344,9 +1361,12 @@ export const diplomatChaosTick = mutation({
       .collect();
     const eligible = rows.filter(r => !r.muted && r.reMuteCount < DIPLOMAT_UNMUTE_MAX_REMUTES_PER_PLAYER);
     if (!eligible.length) return;
-    const pick = pickRandomFromArray(eligible);
-    if (!pick) return;
-    await ctx.db.patch(pick._id, { muted: true, reMuteCount: pick.reMuteCount + 1 });
+    // Re-mute up to 2 random eligible players per tick
+    const shuffled = [...eligible].sort(() => Math.random() - 0.5);
+    const reMuteHowMany = Math.min(2, shuffled.length);
+    for (const pick of shuffled.slice(0, reMuteHowMany)) {
+      await ctx.db.patch(pick._id, { muted: true, reMuteCount: pick.reMuteCount + 1 });
+    }
   },
 });
 
@@ -1392,6 +1412,24 @@ export const engineerPickRebuildType = mutation({
     // Patch the pair with newType.
     const updated = pairs.map((p, i) => i === dyadIndex ? { ...p, newType } : p);
     await ctx.db.patch(sessionId, { currentCrisisDamagedPairs: updated });
+
+    // Propagate the picked type onto the actual connection row(s) for this
+    // dyad. The damaged player's UI watches connection.rebuildNewType — if we
+    // only patched the session-scoped pair list, they'd see "waiting for
+    // engineer" forever. We match in either direction (a→b or b→a) and only
+    // touch rows still tied to this crisis index.
+    const dyadConns = (await ctx.db
+      .query("connections")
+      .withIndex("by_session", q => q.eq("sessionId", sessionId))
+      .collect())
+      .filter(c =>
+        c.destroyedByCrisisIndex === session.crisisIndex &&
+        ((c.fromSlotId === pair.aPlayerId && c.toSlotId === pair.bPlayerId) ||
+         (c.fromSlotId === pair.bPlayerId && c.toSlotId === pair.aPlayerId))
+      );
+    for (const c of dyadConns) {
+      await ctx.db.patch(c._id, { rebuildNewType: newType });
+    }
 
     // If all dyads have newType picked, Engineer's action is done.
     if (updated.every(p => p.newType)) {
@@ -1855,6 +1893,15 @@ async function runResolveDamage(
     excluded.add(diplomat._id);
   }
 
+  // Engineer is exempt from district damage in EVERY crisis. Their crisis role
+  // is choosing rebuild types for damaged dyads via engineerPickRebuildType. If
+  // they were also a victim, they'd be picking a connection type for themselves
+  // to rebuild — incoherent role overlap.
+  const engineer = players.find(p => p.ability === "engineer");
+  if (engineer) {
+    excluded.add(engineer._id);
+  }
+
   const eligibleList = players
     .filter(p => connectedPlayerIds.has(p._id))
     .filter(p => !excluded.has(p._id));
@@ -2265,6 +2312,82 @@ export const checkCrisisClearance = mutation({
   },
 });
 
+// Facilitator-only escape hatch. If the auto-clear path stalls (e.g. a player
+// disconnects mid-crisis and never returns to upload their rebuild), the
+// facilitator can force the crisis into its cleared state. Mirrors the
+// patches autoClearCrisisIfDone applies, without checking contribution flags.
+// Used rarely; the normal flow is everyone-acts-and-rebuilds → auto-clear.
+export const forceClearCurrentCrisis = mutation({
+  args: { sessionId: v.id("sessions") },
+  handler: async (ctx, { sessionId }) => {
+    const session = await ctx.db.get(sessionId);
+    if (!session) throw new Error("Session missing.");
+    if (!session.crisisIndex) throw new Error("No crisis active.");
+
+    // Mark every still-pending rebuild as validated so the connection rows
+    // don't sit in a half-broken state. Uses each connection's
+    // rebuildNewType when present, falls back to its current connectionType.
+    const conns = await ctx.db
+      .query("connections")
+      .withIndex("by_session", q => q.eq("sessionId", sessionId))
+      .collect();
+    for (const c of conns) {
+      if (c.destroyedByCrisisIndex !== session.crisisIndex) continue;
+      await ctx.db.patch(c._id, {
+        rebuildValidatedByHR: true,
+        destroyedByCrisisIndex: 0,
+        damagedSidePlayerId: undefined,
+        connectionType: c.rebuildNewType ?? c.connectionType,
+      });
+      // Clear damaged flag on whichever side was tagged as the victim.
+      if (c.damagedSidePlayerId) {
+        await ctx.db.patch(c.damagedSidePlayerId, {
+          districtDamaged: false,
+          damageReason: undefined,
+        });
+      }
+    }
+
+    // Mark every present non-fac player's contribution as done so the cleared
+    // state is consistent with what auto-clear would produce.
+    const players = (await ctx.db
+      .query("players")
+      .withIndex("by_session", q => q.eq("sessionId", sessionId))
+      .collect()).filter(p => !p.isFacilitator);
+    for (const p of players) {
+      if (p.crisisContribution !== "done") {
+        await ctx.db.patch(p._id, { crisisContribution: "done" });
+      }
+    }
+
+    // Auto-unmute any lingering diplomat mute rows so chat resumes cleanly.
+    if (session.diplomatUnmuteStartedAt && !session.diplomatUnmuteDone) {
+      const rows = await ctx.db
+        .query("diplomat_mute_state")
+        .withIndex("by_session_and_crisis", q =>
+          q.eq("sessionId", sessionId).eq("crisisIndex", session.crisisIndex!))
+        .collect();
+      for (const r of rows) {
+        if (r.muted) await ctx.db.patch(r._id, { muted: false });
+      }
+      await ctx.db.patch(sessionId, { diplomatUnmuteDone: true });
+    }
+
+    const nextState = session.crisisIndex === 1 ? "CH2_CRISIS1_CLEARED" : "CH2_COMPLETE";
+    await ctx.db.patch(sessionId, {
+      ch2State: nextState,
+      chatMutedUntil: undefined,
+      currentCrisisDamagedPairs: [],
+      crisisCardId: undefined,
+      crisisTargetReason: undefined,
+      crisisSubPhase: "cleared",
+      rebuildDeadline: undefined,
+      scoutWarning: undefined,
+    });
+    return { cleared: true, nextState };
+  },
+});
+
 // Pass #16: each player taps "Ready for Crisis 2" on the rotation overlay.
 // HR's DEAL CRISIS for C2 won't enable until every non-fac player has flipped
 // ch2RotationReady=true.
@@ -2444,7 +2567,21 @@ export const updateCh3Position = mutation({
     const player = await ctx.db.get(playerId);
     if (!session || !player) throw new Error("Missing.");
     const targetSlots = session.ch3TargetSlots ?? [];
-    const slot = targetSlots.find(s => s.slotId === player.ch3TargetSlotId);
+    let slot = targetSlots.find(s => s.slotId === player.ch3TargetSlotId);
+    // Self-heal: if the player's stored ch3TargetSlotId doesn't match any slot
+    // (e.g., late-joiner missed generateCh3PatternV13, or the field got out of
+    // sync), find the slot whose `assignedTo` is this player and patch the
+    // player's slot id. Otherwise the player can never count as in-slot and
+    // the auto-complete check would never trip for them.
+    if (!slot) {
+      const byAssignment = targetSlots.find(
+        s => (s.assignedTo as unknown as string | undefined) === (playerId as unknown as string),
+      );
+      if (byAssignment) {
+        slot = byAssignment;
+        await ctx.db.patch(playerId, { ch3TargetSlotId: byAssignment.slotId });
+      }
+    }
     // Pass #31: 18% radius Euclidean tolerance in 0-100 percentage space.
     // Pass #33: re-evaluate every assigned player's in-slot status from their
     // current x,y on every drop, instead of trusting stored ch3InTargetSlot
