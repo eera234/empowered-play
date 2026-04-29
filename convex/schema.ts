@@ -14,6 +14,9 @@ export default defineSchema({
     buildSubPhase: v.optional(v.number()),       // 1-3 during pair_build (which clue round)
     buildStage: v.optional(v.string()),           // "clue" | "build" within a round
     subPhaseDeadline: v.optional(v.number()),     // unix ms timestamp for current sub-phase end
+    // True once Round 3's grace window has been activated (one-shot, prevents
+    // repeated extensions). Cleared on phase change away from pair_build.
+    round3GraceActive: v.optional(v.boolean()),
     crisisCardId: v.optional(v.string()),         // active crisis card ID during map_ch2
     scoutPreview: v.optional(v.string()),         // crisis id previewed privately to the Scout ability holder
     // Pass #21: HR-picked crisis awaiting Scout ack. Set by stagePendingCrisis,
@@ -291,6 +294,9 @@ export default defineSchema({
     buildStartedAt: v.optional(v.number()),
     built: v.optional(v.boolean()),
     expiredAt: v.optional(v.number()),
+    // Auto-created on Ch3 entry to fill in pattern pairs that never built a
+    // connection in Ch2. Renders as a simple drawn line, no photos required.
+    autoSeeded: v.optional(v.boolean()),
   }).index("by_session", ["sessionId"]),
 
   // Pending connection requests (30s expiry) driving the Ch3 handshake.

@@ -84,8 +84,8 @@ export const SCENARIOS: Scenario[] = [
       diplomat: {
         label: "Envoy", icon: "\u{1F4E6}",
         description: "You are the Envoy. When the gale drowns out every voice, only yours carries.",
-        descriptionC1: "When the storm hits, the harbor goes silent. You have 15 seconds to tap each boat and relight their lamp. The gale may snuff some out again in the first 12 seconds.",
-        descriptionC2: "When the storm hits, the harbor goes silent. You have 15 seconds to tap each boat and relight their lamp. The gale may snuff some out again in the first 12 seconds.",
+        descriptionC1: "When the storm hits, the harbor goes silent. You have 15 seconds to tap each boat and relight their lamp. The gale may snuff some out in the first 12 seconds.",
+        descriptionC2: "When the storm hits, the harbor goes silent. You have 15 seconds to tap each boat and relight their lamp. The gale may snuff some out in the first 12 seconds.",
       },
       citizen: {
         label: "Tidebreaker", icon: "\u{1F30A}",
@@ -152,9 +152,9 @@ export const SCENARIOS: Scenario[] = [
       },
       diplomat: {
         label: "Comms Officer", icon: "\u{1F4E8}",
-        description: "You are the Comms Officer. When the station goes dark, your channel is the one that survives.",
-        descriptionC1: "When the surge hits, the station's comms go dark. You have 15 seconds to ping each crew member back online. The static may knock some of them off again in the first 12 seconds.",
-        descriptionC2: "When the surge hits, the station's comms go dark. You have 15 seconds to ping each crew member back online. The static may knock some of them off again in the first 12 seconds.",
+        description: "You're the Comms Officer. When the station goes dark, your channel survives.",
+        descriptionC1: "When the surge hits, comms go dark. You have 15 seconds to ping each crew member back online. Static may knock some offline in the first 12 seconds.",
+        descriptionC2: "When the surge hits, comms go dark. You have 15 seconds to ping each crew member back online. Static may knock some offline in the first 12 seconds.",
       },
       citizen: {
         label: "Council Vote", icon: "\u{1F5F3}\uFE0F",
@@ -222,8 +222,8 @@ export const SCENARIOS: Scenario[] = [
       diplomat: {
         label: "Signaler", icon: "\u{1F41F}",
         description: "You are the Signaler. When the sonar net drowns, only your light keeps the team connected.",
-        descriptionC1: "When the tremor hits, the sonar net goes dead. You have 15 seconds to tap each sector back online. The current may cut some of them out again in the first 12 seconds.",
-        descriptionC2: "When the tremor hits, the sonar net goes dead. You have 15 seconds to tap each sector back online. The current may cut some of them out again in the first 12 seconds.",
+        descriptionC1: "When the tremor hits, the sonar net goes dead. You have 15 seconds to tap each sector back online. The current may cut some out in the first 12 seconds.",
+        descriptionC2: "When the tremor hits, the sonar net goes dead. You have 15 seconds to tap each sector back online. The current may cut some out in the first 12 seconds.",
       },
       citizen: {
         label: "Current Vote", icon: "\u{1F30A}",
@@ -281,8 +281,8 @@ export const SCENARIOS: Scenario[] = [
       diplomat: {
         label: "Griot", icon: "\u{1F941}",
         description: "You are the Griot. When the forest goes silent, only your drum carries the song.",
-        descriptionC1: "When the storm hits, the forest signals fail. You have 15 seconds to drum each outpost back into the song. The howl may drop some of them out again in the first 12 seconds.",
-        descriptionC2: "When the storm hits, the forest signals fail. You have 15 seconds to drum each outpost back into the song. The howl may drop some of them out again in the first 12 seconds.",
+        descriptionC1: "When the storm hits, the forest signals fail. You have 15 seconds to drum each outpost back into the song. The howl may drop some out in the first 12 seconds.",
+        descriptionC2: "When the storm hits, the forest signals fail. You have 15 seconds to drum each outpost back into the song. The howl may drop some out in the first 12 seconds.",
       },
       citizen: {
         label: "Council Elder", icon: "\u{1F333}",
@@ -691,8 +691,8 @@ export const ABILITIES: Ability[] = [
     label: "Diplomat",
     icon: "\u{1F91D}",
     description: "You are the Diplomat. When the team goes silent, only you can bring the voices back.",
-    descriptionC1: "When the crisis hits, team chat goes dark. You run a 16-second mini-game: tap each muted teammate to bring them back. The game may re-mute people at random for the first 15 seconds, then there is a 1-second grace tail to lock in the win.",
-    descriptionC2: "When the crisis hits, team chat goes dark. You run a 16-second mini-game: tap each muted teammate to bring them back. The game may re-mute people at random for the first 15 seconds, then there is a 1-second grace tail to lock in the win.",
+    descriptionC1: "When the crisis hits, team chat goes dark. You have 15 seconds to tap each muted teammate back online. People may get re-muted in the first 12 seconds — keep tapping.",
+    descriptionC2: "When the crisis hits, team chat goes dark. You have 15 seconds to tap each muted teammate back online. People may get re-muted in the first 12 seconds — keep tapping.",
     hrNote: "The Diplomat owns the team's communication lifeline during every crisis, and their pace sets the team's ability to coordinate. Watch whether they prioritize speed, specific teammates, or methodical coverage as the mini-game re-mutes players at random.",
     mechanic: "Chat-immune during mute windows. Runs a 16-second unmute mini-game each crisis: must tap each muted teammate while the game randomly re-mutes them during the first 15 seconds, with a 1-second grace tail before the hard stop.",
     assignmentHint: "Pick a fast, attentive communicator who is at home being the chat hub while juggling many threads at once.",
@@ -1026,11 +1026,14 @@ export const CONNECTION_BUILD_SECONDS_CH2 = 300; // 5 min: greenfield Ch2 bridge
 // function so server-side (convex/game.ts) and client-side (if needed) both
 // compute the same value from the same source.
 export function ch3Seconds(playerCount: number): number {
-  if (playerCount <= 3) return 30;
-  if (playerCount === 4) return 45;
-  if (playerCount === 5) return 60;
-  if (playerCount === 6) return 80;
-  return 100; // 7+ players
+  // Ch3 is a placement+rotation puzzle on a shared map. The previous
+  // 30-100s window was too tight to think through the shape. New target:
+  // 4-8 minutes scaled by player count.
+  if (playerCount <= 3) return 240;  // 4 min
+  if (playerCount === 4) return 300; // 5 min
+  if (playerCount === 5) return 360; // 6 min
+  if (playerCount === 6) return 420; // 7 min
+  return 480;                        // 8 min for 7+ players
 }
 
 // Back-compat constant: some modules still import the old name; keep it as the
@@ -1346,5 +1349,5 @@ export const PER_CONNECTION_BUILD_SECONDS = 120;
 // re-mute, then a 1s grace tail (no re-mutes) so the Diplomat can finish
 // clearing without the rug pulling out. Hard stop at TOTAL_MS.
 export const DIPLOMAT_UNMUTE_TOTAL_MS = 16_000;
-export const DIPLOMAT_UNMUTE_CHAOS_END_MS = 15_000;
-export const DIPLOMAT_UNMUTE_MAX_REMUTES_PER_PLAYER = 2;
+export const DIPLOMAT_UNMUTE_CHAOS_END_MS = 13_000;
+export const DIPLOMAT_UNMUTE_MAX_REMUTES_PER_PLAYER = 8;

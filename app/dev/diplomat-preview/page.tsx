@@ -1,12 +1,12 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import DiplomatUnmuteOverlay from "../../components/DiplomatUnmuteOverlay";
 import type { Id } from "../../../convex/_generated/dataModel";
 
-// Pass #30: standalone preview for the Diplomat unmute mini-game. Mounts the
-// overlay with mock IDs so the visual layout + 15s countdown render without a
-// live Convex session. The mute-state query and tap mutations will return
-// empty / error silently, which is expected for a UI review.
+// Standalone preview for the Diplomat unmute mini-game. Mounts the overlay in
+// previewMode so it bypasses Convex queries/mutations and runs against local
+// mock state.
 //
 // Hit /dev/diplomat-preview in the browser to use.
 export default function DiplomatPreviewPage() {
@@ -19,6 +19,13 @@ export default function DiplomatPreviewPage() {
     { _id: "p4" as unknown as Id<"players">, name: "Dev",  ability: "mender" },
   ];
 
+  // startedAt only resolves client-side. If we computed Date.now() during
+  // render, the server's HTML would render with one timestamp and the client
+  // would hydrate with another — mismatching the SVG dasharray and triggering
+  // a hydration error.
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  useEffect(() => { setStartedAt(Date.now()); }, []);
+
   return (
     <div style={{ position: "relative", minHeight: "100vh", background: "#06061a" }}>
       <div style={{
@@ -29,13 +36,17 @@ export default function DiplomatPreviewPage() {
       }}>
         DEV PREVIEW: Diplomat unmute. Mutations are no-ops.
       </div>
-      <DiplomatUnmuteOverlay
-        sessionId={fakeSession}
-        diplomatId={fakeDiplomat}
-        crisisIndex={1}
-        startedAt={Date.now()}
-        players={players}
-      />
+      {startedAt !== null && (
+        <DiplomatUnmuteOverlay
+          sessionId={fakeSession}
+          diplomatId={fakeDiplomat}
+          crisisIndex={1}
+          startedAt={startedAt}
+          scenarioId="rising_tides"
+          players={players}
+          previewMode
+        />
+      )}
     </div>
   );
 }

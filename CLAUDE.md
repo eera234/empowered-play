@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-(Em)Powered Play — a hybrid LEGO team-building game for corporate teams. Players build physical LEGO districts under secret constraint cards, upload photos, then collaboratively place them on a shared digital city map. Designed to shift workplace power dynamics by giving junior employees structurally essential roles.
+Empowered Play — a hybrid LEGO team-building game for corporate teams. Players build physical LEGO districts under secret constraint cards, upload photos, then collaboratively place them on a shared digital city map. Designed to shift workplace power dynamics by giving junior employees structurally essential roles.
 
 ## Commands
 

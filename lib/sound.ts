@@ -1,4 +1,4 @@
-// Sound manager for (Em)Powered Play.
+// Sound manager for Empowered Play.
 //
 // Uses Web Audio synthesis so sounds work without any MP3 assets. If we ever
 // want richer/licensed sounds, this module is the single place to swap in

@@ -4,100 +4,80 @@ import { useMutation } from "convex/react";
 import { useState } from "react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
+import { SCENARIOS, CONNECTION_TYPES } from "../../lib/constants";
+import { TapPartnerGlyph, BridgeSceneGlyph } from "./Glyphs";
 import ConnectionTypeArt, { type ConnectionTypeKind } from "./ConnectionTypeArt";
-import { ABILITIES, CONNECTION_TYPES, SCENARIOS, getThemedAbility } from "../../lib/constants";
 
 interface Props {
   sessionId: Id<"sessions">;
   playerId: Id<"players">;
-  roleId: string;     // player's assigned role
+  roleId: string;     // kept in props for caller compatibility
   theme: "water" | "space" | "ocean" | "forest";
   scenarioId: string;
   onDone: () => void;
 }
 
-// Carousel shown once on Ch2 entry. Covers flow, how to connect, connection
-// types, your role's first-crisis action, and a ready gate. No C2 spoilers.
-export default function Ch2IntroOverlay({ playerId, roleId, theme, scenarioId, onDone }: Props) {
+// Carousel shown once on Ch2 entry. Three panels: tap-to-pair-up, kinds-of-
+// connections grid, build-and-photograph. We deliberately do not warn the
+// player that a crisis is coming or repeat their role here — they will see
+// those when they happen. P2 shows the four themed connection variants for
+// the active scenario so players recognise what they are being asked to
+// build when their pair forms — the server picks which one each pair gets.
+export default function Ch2IntroOverlay({ playerId, scenarioId, onDone }: Props) {
   const [idx, setIdx] = useState(0);
   const markReady = useMutation(api.mapPhase.markCh2ReadyV13);
 
-  const baseRole = ABILITIES.find(a => a.id === roleId);
   const scenarioObj = SCENARIOS.find(s => s.id === scenarioId);
-  const role = baseRole && scenarioObj ? getThemedAbility(baseRole, scenarioObj) : baseRole;
-  const connTypes = CONNECTION_TYPES[theme] ?? CONNECTION_TYPES.water;
+  const districtTerm = scenarioObj?.terminology?.district ?? "district";
+  const mapTheme = (scenarioObj?.mapTheme ?? "water") as "water" | "space" | "ocean" | "forest";
+  const themedTypes = CONNECTION_TYPES[mapTheme] ?? CONNECTION_TYPES.water;
 
   const panels: React.ReactNode[] = [
-    <div key="flow">
-      <h3 style={panelTitle}>CHAPTER 2</h3>
+    <div key="tap" style={panelCenter}>
+      <div style={{ marginBottom: 12 }}>
+        <TapPartnerGlyph size={160} />
+      </div>
+      <h3 style={panelTitle}>TAP TO PAIR UP</h3>
       <p style={panelBody}>
-        A crisis is coming. Before it lands, the team builds connections so you can face it together.
-        Every role has a part to play.
+        Tap your own {districtTerm} first. Then tap a teammate&apos;s {districtTerm} to send them a connection request.
       </p>
     </div>,
-    <div key="how">
-      <h3 style={panelTitle}>HOW TO CONNECT</h3>
-      <div style={{ display: "grid", gap: 10, marginTop: 6 }}>
-        <div style={{ fontSize: 12, color: "rgba(255,255,255,.82)", lineHeight: 1.5 }}>
-          <b style={{ color: "var(--acc1, #FFD700)" }}>1. Find a partner.</b> Tap another district on the map. Agree in chat to build together.
-        </div>
-        <div style={{ fontSize: 12, color: "rgba(255,255,255,.82)", lineHeight: 1.5 }}>
-          <b style={{ color: "var(--acc1, #FFD700)" }}>2. Build the LEGO bridge.</b> With leftover LEGO pieces, physically construct a small bridge between your builds.
-        </div>
-        <div style={{ fontSize: 12, color: "rgba(255,255,255,.82)", lineHeight: 1.5 }}>
-          <b style={{ color: "var(--acc1, #FFD700)" }}>3. Photograph it.</b> The camera opens. Capture the bridge. Both partners take a photo to lock it in.
-        </div>
-      </div>
-    </div>,
-    <div key="types">
-      <h3 style={panelTitle}>CONNECTION TYPES</h3>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
-        {connTypes.map(t => (
-          <div
-            key={t.id}
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "flex-start",
-              gap: 6,
-              padding: 10,
-              border: "1px solid rgba(255,255,255,.12)",
-              borderRadius: 8,
-              background: "rgba(255,255,255,.02)",
-            }}
-          >
-            <div style={{ width: 96, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <ConnectionTypeArt type={t.id as ConnectionTypeKind} theme={theme} size={96} />
+    <div key="kinds" style={panelCenter}>
+      <h3 style={{ ...panelTitle, marginBottom: 8 }}>KINDS OF CONNECTIONS</h3>
+      <p style={{ ...panelBody, marginBottom: 14 }}>
+        When you pair up, the game gives you one of these to build with LEGO together.
+      </p>
+      <div style={{
+        display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10,
+        width: "100%", maxWidth: 300,
+      }}>
+        {themedTypes.map(t => (
+          <div key={t.id} style={{
+            background: "rgba(255,255,255,.04)",
+            border: "1px solid rgba(255,215,0,.28)",
+            borderRadius: 10, padding: "10px 6px 8px",
+            display: "flex", flexDirection: "column", alignItems: "center",
+            gap: 6,
+          }}>
+            <ConnectionTypeArt type={t.id as ConnectionTypeKind} theme={mapTheme} size={80} />
+            <div style={{
+              fontFamily: "'Black Han Sans', sans-serif",
+              fontSize: 11, letterSpacing: 1.4, color: "var(--acc1, #FFD700)",
+              textAlign: "center", lineHeight: 1.1,
+            }}>
+              {t.label}
             </div>
-            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1, color: "var(--acc1, #FFD700)", textAlign: "center" }}>{t.label}</div>
-            <div style={{ fontSize: 10, color: "rgba(255,255,255,.6)", textAlign: "center", lineHeight: 1.4 }}>{t.hint}</div>
           </div>
         ))}
       </div>
     </div>,
-    <div key="role">
-      <h3 style={panelTitle}>YOUR KIT</h3>
-      <div style={{ ...panelBody, marginBottom: 10 }}>
-        <b>Role:</b> {role?.label ?? roleId} <br />
-        <span style={{ fontSize: 12, opacity: .8 }}>{role?.description}</span>
+    <div key="build" style={panelCenter}>
+      <div style={{ marginBottom: 12 }}>
+        <BridgeSceneGlyph size={160} />
       </div>
-      {role?.descriptionC1 && (
-        <div style={{ padding: 10, border: "1px dashed rgba(90,200,250,.45)", borderRadius: 6, marginBottom: 10, fontSize: 12, color: "rgba(255,255,255,.8)", lineHeight: 1.5 }}>
-          <div style={{ fontFamily: "'Black Han Sans', sans-serif", fontSize: 11, letterSpacing: 2, color: "#5AC8FA", marginBottom: 4 }}>
-            WHEN THE CRISIS HITS
-          </div>
-          {role.descriptionC1}
-        </div>
-      )}
-      <p style={{ fontSize: 11, color: "rgba(255,255,255,.55)" }}>
-        Your role comes with a paired power. The two fire together the moment a crisis strikes.
-      </p>
-    </div>,
-    <div key="ready">
-      <h3 style={panelTitle}>READY?</h3>
+      <h3 style={panelTitle}>BUILD AND PHOTOGRAPH</h3>
       <p style={panelBody}>
-        Once everyone taps READY, the Facilitator can start the round. Take your time.
+        Build the connection in real life between your two {districtTerm}s. Both of you take a photo and upload it when it&apos;s done.
       </p>
     </div>,
   ];
@@ -108,15 +88,20 @@ export default function Ch2IntroOverlay({ playerId, roleId, theme, scenarioId, o
       background: "rgba(5,5,15,.94)", backdropFilter: "blur(10px)",
       display: "flex", alignItems: "center", justifyContent: "center",
       padding: 16, fontFamily: "'Nunito', sans-serif",
+      animation: "fadeIn .3s ease-out",
     }}>
       <div style={{
-        width: "min(460px, 94vw)", background: "var(--bg1, #0e0e25)",
+        width: "min(480px, 94vw)",
+        background: "linear-gradient(180deg, rgba(14,14,37,1), rgba(8,8,22,1))",
         border: "2px solid rgba(255,215,0,.45)", borderRadius: 16,
         padding: 22, color: "white",
+        boxShadow: "0 24px 48px rgba(0,0,0,0.55)",
       }}>
-        {panels[idx]}
+        <div style={{ minHeight: 360, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          {panels[idx]}
+        </div>
 
-        <div style={{ display: "flex", gap: 6, justifyContent: "center", margin: "14px 0" }}>
+        <div style={{ display: "flex", gap: 6, justifyContent: "center", margin: "16px 0" }}>
           {panels.map((_, i) => (
             <span key={i} style={{
               width: 8, height: 8, borderRadius: 4,
@@ -158,20 +143,27 @@ export default function Ch2IntroOverlay({ playerId, roleId, theme, scenarioId, o
   );
 }
 
+const panelCenter: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  textAlign: "center",
+};
+
 const panelTitle: React.CSSProperties = {
   fontFamily: "'Black Han Sans', sans-serif",
-  fontSize: 20, letterSpacing: 2, color: "var(--acc1, #FFD700)",
+  fontSize: 22, letterSpacing: 2.4, color: "var(--acc1, #FFD700)",
   margin: 0, marginBottom: 8,
 };
 
 const panelBody: React.CSSProperties = {
-  fontSize: 13, color: "rgba(255,255,255,.8)", lineHeight: 1.5, margin: 0,
+  fontSize: 13, color: "rgba(255,255,255,.85)", lineHeight: 1.55, margin: 0, maxWidth: 320,
 };
 
 function btnStyle(variant: "primary" | "ghost"): React.CSSProperties {
   return {
-    padding: "11px 14px", borderRadius: 8,
-    fontSize: 12, fontWeight: 900, letterSpacing: 1, textTransform: "uppercase",
+    padding: "12px 14px", borderRadius: 8,
+    fontSize: 12, fontWeight: 900, letterSpacing: 1.2, textTransform: "uppercase",
     cursor: "pointer", fontFamily: "'Nunito', sans-serif",
     background: variant === "primary" ? "rgba(255,215,0,.22)" : "rgba(255,255,255,.04)",
     border: variant === "primary" ? "1.5px solid rgba(255,215,0,.6)" : "1.5px solid rgba(255,255,255,.2)",

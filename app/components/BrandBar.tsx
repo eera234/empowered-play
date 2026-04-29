@@ -46,7 +46,7 @@ export default function BrandBar({ badge, backTo, children }: BrandBarProps) {
         <div className="lego-stud-3d" />
       </div>
       <div className="b-name" onClick={handleBrandClick}>
-        (Em)Powered Play
+        Empowered Play
       </div>
       {badge && <div className="fac-badge">{badge}</div>}
       {children}

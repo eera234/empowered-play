@@ -4,7 +4,7 @@ import { Toaster } from "sonner";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "(Em)Powered Play",
+  title: "Empowered Play",
   description: "Real-time multiplayer LEGO city-building game for corporate teams",
 };
 

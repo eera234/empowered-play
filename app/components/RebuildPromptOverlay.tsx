@@ -1,12 +1,14 @@
 "use client";
 
-import { useMutation } from "convex/react";
+import { useAction, useMutation } from "convex/react";
 import { useEffect, useState } from "react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import InAppCamera from "./InAppCamera";
 import { CONNECTION_TYPES } from "../../lib/constants";
+import { isDevHost } from "../../lib/env";
 import ConnectionTypeArt, { type ConnectionTypeKind } from "./ConnectionTypeArt";
+import { toast } from "sonner";
 
 interface Props {
   sessionId: Id<"sessions">;
@@ -30,6 +32,7 @@ export default function RebuildPromptOverlay({
   rebuildDeadline,
 }: Props) {
   const submit = useMutation(api.mapPhase.submitRebuildPhoto);
+  const detectBlocks = useAction(api.detectLego.detectBuildingBlocks);
   const [busy, setBusy] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [now, setNow] = useState<number>(Date.now());
@@ -48,6 +51,21 @@ export default function RebuildPromptOverlay({
     setCameraOpen(false);
     setBusy(true);
     try {
+      let isLego = true;
+      // Skip the paid detection call on localhost to avoid burning credits
+      // during dev. Production runs detection as before.
+      if (!isDevHost()) {
+        try {
+          const result = await detectBlocks({ imageBase64: dataUrl.split(",")[1] });
+          isLego = !!result.isLego;
+        } catch {
+          isLego = true; // fail-open on action errors
+        }
+      }
+      if (!isLego) {
+        toast("No building blocks detected. Retake with your build in frame.");
+        return;
+      }
       await submit({ sessionId, connectionId, playerId, photoDataUrl: dataUrl });
     } finally {
       setBusy(false);

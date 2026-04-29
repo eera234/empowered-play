@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { ABILITIES, SCENARIOS, getThemedAbility } from "../../lib/constants";
 
 export interface ProtectionEvent {
   savedPlayerId: string;
@@ -12,6 +13,8 @@ export interface ProtectionEvent {
 interface Props {
   events: ProtectionEvent[];
   playersById: Record<string, string>;
+  /** Active scenario id; used to render scenario-themed ability names. */
+  scenarioId?: string;
   /** ms the banner stays on screen after the event timestamp. */
   lifetimeMs?: number;
 }
@@ -20,8 +23,9 @@ interface Props {
 // protection. One stacked row per saved player. Auto-dismissed client-side by
 // filtering out events older than `lifetimeMs`; no clear-mutation needed.
 // aria-live announces the saves to screen readers.
-export default function ProtectionBanner({ events, playersById, lifetimeMs = 6000 }: Props) {
+export default function ProtectionBanner({ events, playersById, scenarioId, lifetimeMs = 6000 }: Props) {
   const [now, setNow] = useState(() => Date.now());
+  const scenario = scenarioId ? SCENARIOS.find((s) => s.id === scenarioId) : undefined;
 
   const freshEvents = events.filter((e) => now - e.at < lifetimeMs);
 
@@ -53,7 +57,7 @@ export default function ProtectionBanner({ events, playersById, lifetimeMs = 600
     >
       {freshEvents.map((e, i) => {
         const savedName = playersById[e.savedPlayerId] ?? "A teammate";
-        const roleLabel = labelForRole(e.protectorRole);
+        const roleLabel = labelForRole(e.protectorRole, scenario);
         const ageMs = now - e.at;
         const fade = Math.max(0, 1 - Math.max(0, ageMs - (lifetimeMs - 800)) / 800);
         return (
@@ -106,16 +110,11 @@ export default function ProtectionBanner({ events, playersById, lifetimeMs = 600
   );
 }
 
-function labelForRole(role: string): string {
-  switch (role) {
-    case "anchor": return "Anchor";
-    case "engineer": return "Engineer";
-    case "scout": return "Scout";
-    case "mender": return "Mender";
-    case "diplomat": return "Diplomat";
-    case "citizen": return "Citizen";
-    default: return role.charAt(0).toUpperCase() + role.slice(1);
-  }
+function labelForRole(role: string, scenario: ReturnType<typeof SCENARIOS.find>): string {
+  const ability = ABILITIES.find((a) => a.id === role);
+  if (!ability) return role.charAt(0).toUpperCase() + role.slice(1);
+  const themed = scenario ? getThemedAbility(ability, scenario) : ability;
+  return themed.label ?? ability.label ?? role;
 }
 
 function ShieldGlyph() {

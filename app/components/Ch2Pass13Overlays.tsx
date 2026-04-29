@@ -219,7 +219,10 @@ export default function Ch2Pass13Overlays({ sessionId, sessionCode, playerId, is
       // destruction to the victim until their type is set, otherwise they
       // would see a stale fallback to the OLD type and start rebuilding wrong.
       if (!myConn.rebuildNewType) {
-        return <WaitingForResolution label="Standby. Engineer is choosing your rebuild type…" />;
+        const baseEngineer = ABILITIES.find((a) => a.id === "engineer");
+        const themedEngineer = baseEngineer && scenario ? getThemedAbility(baseEngineer, scenario) : baseEngineer;
+        const engineerLabel = themedEngineer?.label ?? "Engineer";
+        return <WaitingForResolution label={`Standby. ${engineerLabel} is choosing your rebuild type…`} />;
       }
       const isA = myConn.fromSlotId === playerId;
       const partnerId = isA ? myConn.toSlotId : myConn.fromSlotId;

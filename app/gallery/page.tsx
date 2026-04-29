@@ -10,19 +10,19 @@ import {
   SCENARIOS,
   CLUE_CARDS,
   CRISIS_CARDS,
-  POWER_CARDS,
   VOTE_CATEGORIES,
   ABILITIES,
+  getThemedAbility,
   CONNECTION_TYPES,
   DISTRICT_BANNED_WORDS,
 } from "../../lib/constants";
 import { getClueIllustration } from "../components/ClueIllustrations";
 import { getCrisisIllustration } from "../components/CrisisIllustrations";
-import { getPowerIllustration } from "../components/PowerIllustrations";
 import { getVoteCategoryIllustration } from "../components/VoteCategoryIllustrations";
 import { getDistrictIllustration } from "../components/DistrictIllustrations";
 import AbilityBadge from "../components/AbilityBadge";
 import ConnectionTypeArt, { type ConnectionTypeKind } from "../components/ConnectionTypeArt";
+import RoleDetailModal from "../components/RoleDetailModal";
 import {
   TapGlyph,
   BrickGlyph,
@@ -30,6 +30,16 @@ import {
   PatternGlyph,
   RepairGlyph,
   ShieldGlyph,
+  ClueCardPickGlyph,
+  SwapRolesGlyph,
+  RiddleGlyph,
+  DragToZoneGlyph,
+  TimerLockGlyph,
+  CrisisIncomingGlyph,
+  BridgeSceneGlyph,
+  LastDropGlyph,
+  NewPositionsGlyph,
+  TapPartnerGlyph,
 } from "../components/Glyphs";
 
 const THEMES: Array<{ id: "water" | "space" | "ocean" | "forest"; label: string }> = [
@@ -125,8 +135,123 @@ const gridBase: React.CSSProperties = {
   gap: 12,
 };
 
+interface IntroPanelMock {
+  glyph: React.ReactNode;
+  headline: string;
+  body: string;
+  riddle?: string;     // only used by Ch1 panel 1
+  roleLabel?: string;  // only used by Ch2 "YOUR KIT" panel
+}
+
+function ChapterIntroPreview({
+  title,
+  subtitle,
+  panels,
+}: {
+  title: string;
+  subtitle?: string;
+  panels: IntroPanelMock[];
+}) {
+  return (
+    <div style={{ marginBottom: 24 }}>
+      <div
+        style={{
+          fontFamily: "'Black Han Sans', sans-serif",
+          fontSize: 13,
+          letterSpacing: 1.5,
+          color: "white",
+          textTransform: "uppercase",
+          marginBottom: 4,
+        }}
+      >
+        {title}
+      </div>
+      {subtitle && (
+        <div style={{ fontSize: 11, color: "var(--textdd)", marginBottom: 10, lineHeight: 1.5 }}>
+          {subtitle}
+        </div>
+      )}
+      <div style={{ ...gridBase, gridTemplateColumns: `repeat(${panels.length}, minmax(180px, 1fr))` }}>
+        {panels.map((p, i) => (
+          <div
+            key={i}
+            style={{
+              background: "linear-gradient(180deg, rgba(14,14,37,1), rgba(8,8,22,1))",
+              border: "2px solid rgba(255,215,0,.45)",
+              borderRadius: 14,
+              padding: 18,
+              minHeight: 280,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "flex-start",
+              textAlign: "center",
+              boxShadow: "0 12px 28px rgba(0,0,0,.4)",
+            }}
+          >
+            <div style={{ fontSize: 9, letterSpacing: 1.5, color: "var(--textdd)", marginBottom: 8 }}>
+              PANEL {i + 1}
+            </div>
+            <div style={{ marginBottom: 10 }}>{p.glyph}</div>
+            <div
+              style={{
+                fontFamily: "'Black Han Sans', sans-serif",
+                fontSize: 16,
+                letterSpacing: 2,
+                color: "var(--acc1, #FFD700)",
+                marginBottom: 6,
+              }}
+            >
+              {p.headline}
+            </div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,.85)", lineHeight: 1.5, maxWidth: 220 }}>
+              {p.body}
+            </div>
+            {p.riddle && (
+              <div
+                style={{
+                  marginTop: 10,
+                  background: "rgba(255,215,0,.08)",
+                  border: "1px solid rgba(255,215,0,.35)",
+                  borderRadius: 8,
+                  padding: "8px 10px",
+                  fontSize: 11,
+                  fontStyle: "italic",
+                  color: "white",
+                  lineHeight: 1.5,
+                  maxWidth: 220,
+                }}
+              >
+                &ldquo;{p.riddle}&rdquo;
+              </div>
+            )}
+            {p.roleLabel && (
+              <div
+                style={{
+                  marginTop: 10,
+                  padding: "6px 12px",
+                  border: "1px solid rgba(255,215,0,.4)",
+                  borderRadius: 8,
+                  background: "rgba(255,215,0,.08)",
+                  fontFamily: "'Black Han Sans', sans-serif",
+                  fontSize: 12,
+                  letterSpacing: 1.5,
+                  color: "var(--acc1, #FFD700)",
+                }}
+              >
+                {p.roleLabel}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function GalleryPage() {
   const [activeScenario, setActiveScenario] = useState<string>(SCENARIOS[0].id);
+  const [galleryDetailAbilityId, setGalleryDetailAbilityId] = useState<string | null>(null);
 
   return (
     <div
@@ -157,22 +282,195 @@ export default function GalleryPage() {
             Every illustration that ships in the game. Use this page for review.
           </p>
         </div>
-        <Link
-          href="/"
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <Link
+            href="/a3-jury"
+            style={{
+              background: "var(--lego-yellow)",
+              border: "1px solid var(--lego-yellow)",
+              padding: "8px 14px",
+              borderRadius: 8,
+              fontSize: 12,
+              color: "#0a0a14",
+              textDecoration: "none",
+              fontWeight: 900,
+              letterSpacing: 1,
+              fontFamily: "'Black Han Sans', sans-serif",
+              textTransform: "uppercase",
+            }}
+          >
+            A3 Jury Deck {"\u2192"}
+          </Link>
+          <Link
+            href="/"
+            style={{
+              background: "var(--bg2)",
+              border: "1px solid var(--border)",
+              padding: "8px 14px",
+              borderRadius: 8,
+              fontSize: 12,
+              color: "var(--textd)",
+              textDecoration: "none",
+              fontWeight: 700,
+            }}
+          >
+            {"\u2190"} Back to game
+          </Link>
+        </div>
+      </header>
+
+      <Section title="A3 Jury Presentation">
+        <div
           style={{
+            display: "flex",
+            gap: 16,
+            alignItems: "center",
+            padding: 18,
             background: "var(--bg2)",
             border: "1px solid var(--border)",
-            padding: "8px 14px",
-            borderRadius: 8,
-            fontSize: 12,
-            color: "var(--textd)",
-            textDecoration: "none",
-            fontWeight: 700,
+            borderLeft: "4px solid var(--lego-yellow)",
+            borderRadius: 10,
           }}
         >
-          {"\u2190"} Back to game
-        </Link>
-      </header>
+          <div style={{ flex: 1 }}>
+            <div
+              style={{
+                fontFamily: "'Black Han Sans', sans-serif",
+                fontSize: 16,
+                letterSpacing: 1.5,
+                color: "white",
+                marginBottom: 4,
+              }}
+            >
+              20-Slide Deck for Review
+            </div>
+            <div style={{ fontSize: 12, color: "var(--textd)", lineHeight: 1.5 }}>
+              Step through the slides with arrow keys. Click <strong>Download as PPTX</strong> on the deck page to export an editable Keynote/PowerPoint file.
+            </div>
+          </div>
+          <Link
+            href="/a3-jury"
+            style={{
+              background: "var(--lego-yellow)",
+              color: "#0a0a14",
+              padding: "10px 18px",
+              borderRadius: 8,
+              fontSize: 13,
+              fontFamily: "'Black Han Sans', sans-serif",
+              letterSpacing: 1.5,
+              textDecoration: "none",
+              fontWeight: 900,
+              textTransform: "uppercase",
+              flexShrink: 0,
+            }}
+          >
+            Open Deck {"\u2192"}
+          </Link>
+        </div>
+      </Section>
+
+      <Section title="Chapter Intros (Player-Facing Onboarding)">
+        <div style={{ fontSize: 11, color: "var(--textdd)", marginBottom: 14, lineHeight: 1.5 }}>
+          The four blocking intro overlays players see before each chapter. Each row is one intro&apos;s carousel panels in order.
+          Glyphs are bespoke per panel and copy is calibrated for ~25-40 words each.
+        </div>
+        <ChapterIntroPreview
+          title="Pair-build intro"
+          subtitle="Shown once per session, before the clue-card loop starts."
+          panels={[
+            { glyph: <ClueCardPickGlyph size={120} />, headline: "PICK A CLUE",            body: "You get six clue cards. Each round, pick one and send it to your partner. They will use only your clue to build with LEGO." },
+            { glyph: <BrickGlyph size={120} />,        headline: "YOUR PARTNER'S TURN",    body: "At the same time, your partner sends you a clue. Build with LEGO from their clue. When you finish, take a photo and send it back." },
+            { glyph: <SwapRolesGlyph size={120} />,    headline: "THREE ROUNDS, ONE BUILD", body: "There are three rounds with the same partner. You keep adding to the same build each round. Each new clue adds a little more detail, so by the end your build matches what your partner imagined." },
+          ]}
+        />
+        <ChapterIntroPreview
+          title="Ch1 briefing"
+          subtitle="Shown when Chapter 1 (place your district) begins. Private clue, if any, appears on panel 1."
+          panels={[
+            { glyph: <RiddleGlyph size={120} />,    headline: "YOUR PRIVATE CLUE", body: "You get a private clue. It hints at one spot on the harbor. Only you can see it. Read it carefully and figure out where it points.", riddle: "I stand watch where the harbor meets the open sea." },
+            { glyph: <DragToZoneGlyph size={120} />, headline: "DRAG YOUR DISTRICT", body: "Drag your district onto the spot you think your clue means. You can move it as many times as you like before the timer ends." },
+            { glyph: <TimerLockGlyph size={120} />,  headline: "TWO MINUTES",       body: "You have two minutes to place your district. When the timer ends, your final position locks in." },
+          ]}
+        />
+        <ChapterIntroPreview
+          title="Ch2 intro"
+          subtitle="Shown when Chapter 2 begins. Three panels: tap to pair up, kinds of connections (themed), build and photograph. No crisis warning, no role panel."
+          panels={[
+            { glyph: <TapPartnerGlyph size={120} />, headline: "TAP TO PAIR UP",    body: "Tap your own district first. Then tap a teammate's district to send them a connection request." },
+            {
+              glyph: (
+                <div style={{
+                  display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6,
+                  width: 180,
+                }}>
+                  {CONNECTION_TYPES.water.map(t => (
+                    <div key={t.id} style={{
+                      background: "rgba(255,255,255,.04)",
+                      border: "1px solid rgba(255,215,0,.25)",
+                      borderRadius: 8, padding: "4px 4px 2px",
+                      display: "flex", flexDirection: "column", alignItems: "center",
+                    }}>
+                      <ConnectionTypeArt type={t.id as ConnectionTypeKind} theme="water" size={64} />
+                      <div style={{
+                        marginTop: 2,
+                        fontFamily: "'Black Han Sans', sans-serif",
+                        fontSize: 9, letterSpacing: 1, color: "var(--acc1, #FFD700)",
+                      }}>
+                        {t.label}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ),
+              headline: "KINDS OF CONNECTIONS",
+              body: "When you pair up, the game gives you one of these to build with LEGO together.",
+            },
+            { glyph: <BridgeSceneGlyph size={120} />, headline: "BUILD AND PHOTOGRAPH", body: "Build the connection in real life between your two districts. Both of you take a photo and upload it when it's done." },
+          ]}
+        />
+        <ChapterIntroPreview
+          title="Ch3 intro"
+          subtitle="Shown when Chapter 3 (pattern placement) begins. The shape is never pre-revealed."
+          panels={[
+            { glyph: <NewPositionsGlyph size={120} />, headline: "A PATTERN APPEARS",   body: "A pattern will appear on the harbor. Every district has its own spot in it. Rearrange yourselves into the pattern." },
+            { glyph: <DragToZoneGlyph size={120} />,   headline: "DRAG INTO YOUR SPOT", body: "Your district glows on the spot you belong in. Drag it into the glowing space." },
+            { glyph: <LastDropGlyph size={120} />,     headline: "EVERYONE IN PLACE",   body: "When every district is in its spot, the round is complete." },
+          ]}
+        />
+      </Section>
+
+      <Section title="Intro Glyphs (Bespoke)">
+        <div style={{ fontSize: 11, color: "var(--textdd)", marginBottom: 14, lineHeight: 1.5 }}>
+          Bespoke glyphs created for the chapter intros above. All drawn in the existing house style
+          (200x200 viewBox, isometric LEGO). Compare against the original glyphs in the next section for consistency.
+        </div>
+        <div style={{ ...gridBase, gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>
+          <Tile label="ClueCardPickGlyph" subLabel="Pair-build P1"><ClueCardPickGlyph size={120} /></Tile>
+          <Tile label="SwapRolesGlyph" subLabel="Pair-build P3"><SwapRolesGlyph size={120} /></Tile>
+          <Tile label="RiddleGlyph" subLabel="Ch1 P1"><RiddleGlyph size={120} /></Tile>
+          <Tile label="DragToZoneGlyph" subLabel="Ch1 P2 + Ch3 P2"><DragToZoneGlyph size={120} /></Tile>
+          <Tile label="TimerLockGlyph" subLabel="Ch1 P3"><TimerLockGlyph size={120} /></Tile>
+          <Tile label="TapPartnerGlyph" subLabel="Ch2 P1"><TapPartnerGlyph size={120} /></Tile>
+          <Tile label="BridgeSceneGlyph" subLabel="Ch2 P3"><BridgeSceneGlyph size={120} /></Tile>
+          <Tile label="NewPositionsGlyph" subLabel="Ch3 P1"><NewPositionsGlyph size={120} /></Tile>
+          <Tile label="LastDropGlyph" subLabel="Ch3 P3"><LastDropGlyph size={120} /></Tile>
+          <Tile label="CrisisIncomingGlyph" subLabel="Unused (kept for future use)"><CrisisIncomingGlyph size={120} /></Tile>
+        </div>
+      </Section>
+
+      <Section title="Original Glyphs (Pre-existing)">
+        <div style={{ fontSize: 11, color: "var(--textdd)", marginBottom: 14, lineHeight: 1.5 }}>
+          The six original instructional glyphs. Reference set for the new ones above to match in style.
+        </div>
+        <div style={{ ...gridBase, gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>
+          <Tile label="TapGlyph"><TapGlyph size={120} /></Tile>
+          <Tile label="BrickGlyph" subLabel="Reused: pair-build P2"><BrickGlyph size={120} /></Tile>
+          <Tile label="CameraGlyph"><CameraGlyph size={120} /></Tile>
+          <Tile label="PatternGlyph" subLabel="Reused: Ch3 P1"><PatternGlyph size={120} /></Tile>
+          <Tile label="RepairGlyph"><RepairGlyph size={120} /></Tile>
+          <Tile label="ShieldGlyph"><ShieldGlyph size={120} /></Tile>
+        </div>
+      </Section>
 
       {/* Scenario picker for district illustrations */}
       <Section title="District Illustrations">
@@ -388,19 +686,6 @@ export default function GalleryPage() {
         })}
       </Section>
 
-      <Section title="Power Cards (5)">
-        <div style={{ ...gridBase, gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))" }}>
-          {POWER_CARDS.map((c) => {
-            const Art = getPowerIllustration(c.id);
-            return (
-              <Tile key={c.id} label={c.title} subLabel="POWER">
-                <Art size={130} />
-              </Tile>
-            );
-          })}
-        </div>
-      </Section>
-
       <Section title="Vote Categories (4)">
         <div style={{ ...gridBase, gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))" }}>
           {VOTE_CATEGORIES.map((c) => {
@@ -569,84 +854,94 @@ export default function GalleryPage() {
 
       <Section title={`Role Cards (${ABILITIES.length})`}>
         <div style={{ fontSize: 11, color: "var(--textd)", marginBottom: 14, letterSpacing: 0.5 }}>
-          Full text of each role card. Facilitator reviews these during role assignment after the scenario vote.
+          Mirrors the facilitator&apos;s role-assignment grid: badge, themed label, and one-line assignment hint. Theming follows the active scenario above.
         </div>
-        <div
-          style={{
-            display: "grid",
-            gap: 14,
-            gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
-          }}
-        >
-          {ABILITIES.map((a) => {
-            const colors: Record<string, string> = {
-              mender: "#4FC3F7", scout: "#B388FF", engineer: "#FF7043",
-              anchor: "#66BB6A", diplomat: "#FFD740", citizen: "#EC407A",
-            };
-            const color = colors[a.id] || "#B388FF";
-            return (
-              <div
-                key={a.id}
-                style={{
-                  background: "var(--bg2)",
-                  border: `1px solid ${color}44`,
-                  borderLeft: `4px solid ${color}`,
-                  borderRadius: 10,
-                  padding: 16,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 12,
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <AbilityBadge ability={a} size={64} />
-                  <div>
+        {(() => {
+          const s = SCENARIOS.find((x) => x.id === activeScenario) ?? SCENARIOS[0];
+          return (
+            <div
+              style={{
+                display: "grid",
+                gap: 14,
+                gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+              }}
+            >
+              {ABILITIES.map((a) => {
+                const themed = getThemedAbility(a, s);
+                return (
+                  <div
+                    key={a.id}
+                    style={{
+                      background: "var(--bg2)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 10,
+                      padding: 14,
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      textAlign: "center",
+                      gap: 10,
+                    }}
+                  >
+                    <AbilityBadge ability={themed} size={72} />
                     <div
                       style={{
                         fontFamily: "'Black Han Sans', sans-serif",
-                        fontSize: 18,
-                        letterSpacing: 1.5,
-                        color,
+                        fontSize: 14,
+                        letterSpacing: 1.4,
+                        color: "white",
                       }}
                     >
-                      {a.label}
+                      {themed.label}
                     </div>
-                    <div style={{ fontSize: 10, color: "var(--textdd)", letterSpacing: 1 }}>ROLE CARD</div>
+                    <div style={{ fontSize: 11, color: "var(--textd)", lineHeight: 1.5 }}>
+                      {themed.assignmentHint || a.description}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setGalleryDetailAbilityId(a.id)}
+                      style={{
+                        marginTop: 4,
+                        background: "transparent",
+                        border: "1.5px solid var(--border)",
+                        color: "var(--textd)",
+                        fontFamily: "'Nunito', sans-serif",
+                        fontSize: 10,
+                        fontWeight: 800,
+                        letterSpacing: 0.5,
+                        borderRadius: 6,
+                        padding: "5px 10px",
+                        cursor: "pointer",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      View details
+                    </button>
                   </div>
-                </div>
-                <div style={{ fontSize: 12, color: "var(--text)", lineHeight: 1.5 }}>
-                  {a.description}
-                </div>
-                <div>
-                  <div style={{ fontSize: 9, color: "var(--acc2)", letterSpacing: 1, marginBottom: 4 }}>CRISIS 1</div>
-                  <div style={{ fontSize: 11, color: "var(--text)", lineHeight: 1.5 }}>{a.descriptionC1}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 9, color: "var(--acc2)", letterSpacing: 1, marginBottom: 4 }}>CRISIS 2</div>
-                  <div style={{ fontSize: 11, color: "var(--text)", lineHeight: 1.5 }}>{a.descriptionC2}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 9, color: "var(--acc1)", letterSpacing: 1, marginBottom: 4 }}>GAME MECHANIC</div>
-                  <div style={{ fontSize: 11, color: "var(--textd)", lineHeight: 1.5 }}>{a.mechanic}</div>
-                </div>
-                <div
-                  style={{
-                    background: "rgba(255,255,255,.03)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 8,
-                    padding: 10,
-                  }}
-                >
-                  <div style={{ fontSize: 9, color: "#FFB74D", letterSpacing: 1, marginBottom: 4 }}>FACILITATOR INSIGHT</div>
-                  <div style={{ fontSize: 11, color: "var(--text)", lineHeight: 1.5, fontStyle: "italic" }}>
-                    {a.hrNote}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+                );
+              })}
+            </div>
+          );
+        })()}
       </Section>
+
+      {galleryDetailAbilityId && (() => {
+        const baseA = ABILITIES.find((x) => x.id === galleryDetailAbilityId);
+        if (!baseA) return null;
+        const s = SCENARIOS.find((x) => x.id === activeScenario) ?? SCENARIOS[0];
+        const colors: Record<string, string> = {
+          mender: "#4FC3F7", scout: "#B388FF", engineer: "#FF7043",
+          anchor: "#66BB6A", diplomat: "#FFD740", citizen: "#EC407A",
+        };
+        return (
+          <RoleDetailModal
+            ability={baseA}
+            scenario={s}
+            color={colors[baseA.id] || "#B388FF"}
+            onClose={() => setGalleryDetailAbilityId(null)}
+          />
+        );
+      })()}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-# (Em)Powered Play — Setup Guide
+# Empowered Play — Setup Guide
 
 ## Run locally first (test on your laptop)
 
@@ -16,7 +16,7 @@ npm start
 ```
 You should see:
 ```
-(Em)Powered Play server running on http://localhost:3000
+Empowered Play server running on http://localhost:3000
 ```
 
 ### Step 3 — Open the game

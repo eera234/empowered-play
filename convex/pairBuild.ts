@@ -189,18 +189,28 @@ export const uploadBuildPhoto = mutation({
       const allUploaded = builders.every((b) => uploadedPlayerIds.has(b._id));
       if (allUploaded) {
         if (round < 3) {
-          const nextCfg = PAIR_BUILD_ROUNDS[round];
+          // Do NOT preset subPhaseDeadline. Same model as the initial entry to
+          // pair_build: clear pairBuildReady on every non-fac player so the
+          // next round's clue timer is gated on a fresh "ready" handshake from
+          // everyone. The last player's markPairBuildReady stamps the deadline,
+          // so all clients see the timer start at the same instant.
           await ctx.db.patch(sessionId, {
             buildSubPhase: round + 1,
             buildStage: "clue",
-            subPhaseDeadline: Date.now() + nextCfg.clueSeconds * 1000,
+            subPhaseDeadline: undefined,
           });
+          for (const p of allPlayers) {
+            if (!p.isFacilitator && p.pairBuildReady) {
+              await ctx.db.patch(p._id, { pairBuildReady: false });
+            }
+          }
         } else {
           await ctx.db.patch(sessionId, {
             phase: "guess",
             buildSubPhase: undefined,
             buildStage: undefined,
             subPhaseDeadline: undefined,
+            round3GraceActive: undefined,
           });
         }
       }
@@ -300,6 +310,7 @@ export const advanceSubPhase = mutation({
       buildSubPhase: undefined,
       buildStage: undefined,
       subPhaseDeadline: undefined,
+      round3GraceActive: undefined,
     });
     return { advanced: true, nextPhase: "guess" };
   },
@@ -310,5 +321,32 @@ export const setSubPhaseDeadline = mutation({
   args: { sessionId: v.id("sessions"), deadline: v.number() },
   handler: async (ctx, { sessionId, deadline }) => {
     await ctx.db.patch(sessionId, { subPhaseDeadline: deadline });
+  },
+});
+
+// Round 3 grace window: when the build deadline expires and not every present
+// builder has uploaded yet, the client calls this once to extend the
+// subPhaseDeadline by 120 seconds. Round 3 specifically needs this because
+// Chapter 2 guessing depends on every district photo — without an upload the
+// guess phase has nothing to go on. Idempotent: only fires the extension on
+// the first call (gated by session.round3GraceActive).
+export const triggerRound3Grace = mutation({
+  args: { sessionId: v.id("sessions") },
+  handler: async (ctx, { sessionId }) => {
+    const session = await ctx.db.get(sessionId);
+    if (!session) return { extended: false };
+    if (session.phase !== "pair_build") return { extended: false };
+    if (session.buildSubPhase !== 3) return { extended: false };
+    if (session.buildStage !== "build") return { extended: false };
+    if (session.round3GraceActive) return { extended: false };
+    const deadline = session.subPhaseDeadline;
+    if (!deadline) return { extended: false };
+    if (Date.now() < deadline) return { extended: false };
+
+    await ctx.db.patch(sessionId, {
+      subPhaseDeadline: Date.now() + 120 * 1000,
+      round3GraceActive: true,
+    });
+    return { extended: true };
   },
 });

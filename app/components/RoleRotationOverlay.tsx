@@ -28,62 +28,186 @@ export default function RoleRotationOverlay({ previousRoleId, newRoleId, scenari
       padding: 16, fontFamily: "'Nunito', sans-serif",
     }}>
       <div style={{
-        width: "min(420px, 92vw)",
+        width: "min(440px, 92vw)",
         background: "linear-gradient(180deg, rgba(14,14,37,1), rgba(8,8,22,1))",
-        border: "2px solid rgba(90, 200, 250, 0.55)", borderRadius: 16,
+        border: "1.5px solid rgba(255,215,0,.4)", borderRadius: 16,
         padding: 22, color: "white",
         boxShadow: "0 24px 48px rgba(0,0,0,0.55)",
         animation: "fadeIn .4s ease-out",
+        display: "flex", flexDirection: "column", gap: 14,
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-          <span aria-hidden="true" style={{ fontSize: 18, lineHeight: 1, filter: "drop-shadow(0 0 6px rgba(90,200,250,0.45))" }}>
-            {"\u21BB"}
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span aria-hidden="true" style={{ fontSize: 18, lineHeight: 1, filter: "drop-shadow(0 0 6px rgba(255,215,0,0.45))", color: "var(--acc1, #FFD700)" }}>
+            {"↻"}
           </span>
           <div style={{
             fontFamily: "'Black Han Sans', sans-serif",
-            fontSize: 16, letterSpacing: 2, color: "#5AC8FA",
+            fontSize: 16, letterSpacing: 2, color: "var(--acc1, #FFD700)",
           }}>
             ROLES HAVE ROTATED
           </div>
         </div>
-        <div style={{ fontSize: 13, lineHeight: 1.55, color: "rgba(255,255,255,.78)", marginBottom: 14 }}>
-          You were <b style={{ color: "rgba(255,255,255,0.95)" }}>{prev?.label ?? previousRoleId}</b>. Now you are <b style={{ color: "var(--acc1, #FFD700)" }}>{next?.label ?? newRoleId}</b>.
-        </div>
+
+        {/* Block A — From → To hero */}
         <div style={{
-          border: "1px dashed rgba(255,215,0,.45)", borderRadius: 8, padding: 12,
-          marginBottom: 14,
+          display: "grid",
+          gridTemplateColumns: "1fr auto 1.4fr",
+          alignItems: "center",
+          gap: 12,
+          padding: "12px 4px 14px",
+          borderBottom: "1px solid rgba(255,255,255,.08)",
         }}>
-          <div style={{ fontSize: 12, fontWeight: 800, color: "var(--acc1, #FFD700)", marginBottom: 4 }}>
-            {next?.label?.toUpperCase() ?? "ROLE"}
+          <div style={{ opacity: 0.55 }}>
+            <div style={{
+              fontFamily: "'Black Han Sans', sans-serif",
+              fontSize: 9, letterSpacing: 1.6, color: "rgba(255,255,255,.55)",
+              marginBottom: 2,
+            }}>
+              PREVIOUS
+            </div>
+            <div style={{
+              fontSize: 12, color: "rgba(255,255,255,.78)",
+              textDecoration: "line-through", textDecorationColor: "rgba(255,255,255,.3)",
+              lineHeight: 1.2,
+            }}>
+              {prev?.label ?? previousRoleId}
+            </div>
           </div>
-          <div style={{ fontSize: 12, color: "rgba(255,255,255,.75)", marginBottom: 8 }}>
-            {next?.description}
+          <div style={{
+            fontFamily: "'Black Han Sans', sans-serif",
+            fontSize: 22, color: "var(--acc1, #FFD700)",
+            lineHeight: 1, padding: "0 2px",
+          }}>
+            {"→"}
           </div>
-          {next?.descriptionC2 && (
-            <>
-              <div style={{ fontSize: 11, fontWeight: 800, color: "#5AC8FA", letterSpacing: 2, marginBottom: 4 }}>
-                WHEN THE NEXT CRISIS HITS
+          <div>
+            <div style={{
+              fontFamily: "'Black Han Sans', sans-serif",
+              fontSize: 9, letterSpacing: 1.8, color: "var(--acc1, #FFD700)",
+              marginBottom: 3,
+            }}>
+              YOUR NEW ROLE
+            </div>
+            <div style={{
+              fontFamily: "'Black Han Sans', sans-serif",
+              fontSize: 18, letterSpacing: 1.2, color: "white",
+              lineHeight: 1.1,
+            }}>
+              {(next?.label ?? newRoleId).toUpperCase()}
+            </div>
+          </div>
+        </div>
+
+        {/* Block B — Role identity */}
+        {next?.description && (
+          <div style={{
+            border: "1px solid rgba(255,255,255,.1)",
+            borderRadius: 10,
+            padding: "12px 14px",
+            background: "rgba(255,255,255,.02)",
+          }}>
+            <div style={{
+              display: "inline-block",
+              fontFamily: "'Black Han Sans', sans-serif",
+              fontSize: 9.5, letterSpacing: 1.6,
+              color: "var(--acc1, #FFD700)",
+              background: "rgba(255,215,0,.1)",
+              border: "1px solid rgba(255,215,0,.3)",
+              borderRadius: 999,
+              padding: "3px 9px",
+              marginBottom: 8,
+            }}>
+              {(next.label ?? "").toUpperCase()}
+            </div>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,.88)", lineHeight: 1.55 }}>
+              {next.description}
+            </div>
+          </div>
+        )}
+
+        {/* Block C — Crisis briefing */}
+        {next?.descriptionC2 && (
+          <div style={{
+            display: "flex",
+            gap: 10,
+            paddingLeft: 2,
+          }}>
+            <div style={{
+              width: 3, alignSelf: "stretch",
+              background: "var(--acc1, #FFD700)",
+              borderRadius: 2,
+              flexShrink: 0,
+            }} />
+            <div style={{ flex: 1 }}>
+              <div style={{
+                fontFamily: "'Black Han Sans', sans-serif",
+                fontSize: 10.5, letterSpacing: 1.8,
+                color: "var(--acc1, #FFD700)",
+                marginBottom: 4,
+              }}>
+                WHEN CRISIS HITS
               </div>
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,.8)", lineHeight: 1.5, marginBottom: 8 }}>
+              <div style={{ fontSize: 13, color: "rgba(255,255,255,.86)", lineHeight: 1.5 }}>
                 {next.descriptionC2}
               </div>
-            </>
-          )}
-          <div style={{ fontSize: 12, fontWeight: 800, color: "var(--acc1, #FFD700)", marginBottom: 4 }}>
-            POWER: {nextPower?.title?.toUpperCase() ?? nextPowerId}
+            </div>
           </div>
-          <div style={{ fontSize: 12, color: "rgba(255,255,255,.75)" }}>
-            {nextPower?.description}
+        )}
+
+        {/* Block D — Power chip */}
+        {nextPower && (
+          <div style={{
+            background: "rgba(255,255,255,.04)",
+            borderRadius: 10,
+            padding: "11px 13px",
+          }}>
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              marginBottom: 4,
+            }}>
+              <span style={{
+                fontFamily: "'Black Han Sans', sans-serif",
+                fontSize: 9, letterSpacing: 1.8,
+                color: "var(--acc1, #FFD700)",
+                background: "rgba(255,215,0,.14)",
+                padding: "2px 7px",
+                borderRadius: 4,
+              }}>
+                POWER
+              </span>
+              <span style={{
+                fontFamily: "'Black Han Sans', sans-serif",
+                fontSize: 13, letterSpacing: 1.2,
+                color: "white",
+                textTransform: "uppercase",
+              }}>
+                {nextPower.title}
+              </span>
+            </div>
+            <div style={{ fontSize: 12.5, color: "rgba(255,255,255,.78)", lineHeight: 1.5 }}>
+              {nextPower.description}
+            </div>
           </div>
-        </div>
+        )}
+
         <button
           onClick={onDismiss}
           style={{
-            width: "100%", padding: "12px 14px",
-            background: "rgba(255,215,0,.22)", border: "1.5px solid rgba(255,215,0,.6)",
+            width: "100%", padding: "13px 14px",
+            background: "rgba(255,215,0,.22)", border: "2px solid rgba(255,215,0,.6)",
             borderRadius: 8, color: "var(--acc1, #FFD700)",
-            fontSize: 13, fontWeight: 900, letterSpacing: 1, textTransform: "uppercase",
+            fontSize: 13, fontWeight: 900, letterSpacing: 1.2, textTransform: "uppercase",
             cursor: "pointer", fontFamily: "'Nunito', sans-serif",
+            transition: "transform .15s ease, box-shadow .15s ease",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.boxShadow = "0 4px 16px rgba(255,215,0,.25)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.boxShadow = "none";
           }}
         >
           Ready for Crisis 2

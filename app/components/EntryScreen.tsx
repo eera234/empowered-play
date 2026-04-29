@@ -1086,7 +1086,7 @@ export default function EntryScreen() {
     <div className="screen active" id="s-entry">
       <BackgroundSkyline />
       <div className="entry-inner" style={{ position: "relative", zIndex: 1 }}>
-        <div className="game-title">(Em)Powered Play</div>
+        <div className="game-title">Empowered Play</div>
         <div className="game-sub">A structural team dynamics game</div>
         <div className="mode-row">
           <div className="mode-card" onClick={() => goTo("s-join")}>

@@ -647,6 +647,36 @@ export const advanceNewPhase = mutation({
         }
       }
       patch.connectionPattern = pattern;
+
+      // Auto-seed any pattern connections that don't already exist as built
+      // connections from Ch2. Ch3 has no UI to start a fresh connection
+      // (StoryMapScreen.handleDistrictTap early-returns when not in Ch2), so
+      // pattern pairs with no Ch2 history would otherwise leave the team
+      // unable to complete the shape. Seeded rows are real connections —
+      // visually rendered as built lines, no photos required.
+      const existingConns = await ctx.db
+        .query("connections")
+        .withIndex("by_session", (q) => q.eq("sessionId", sessionId))
+        .collect();
+      const existingPairKey = new Set<string>();
+      for (const c of existingConns) {
+        const isActive = !c.destroyedByCrisisIndex || c.destroyedByCrisisIndex === 0;
+        if (!isActive) continue;
+        existingPairKey.add(canonKey(c.fromSlotId as Id<"players">, c.toSlotId as Id<"players">));
+      }
+      for (const entry of pattern) {
+        if (existingPairKey.has(entry.key)) continue;
+        await ctx.db.insert("connections", {
+          sessionId,
+          fromSlotId: entry.aPlayerId,
+          toSlotId: entry.bPlayerId,
+          builtBy: entry.aPlayerId,
+          coBuiltBy: entry.bPlayerId,
+          connectionType: entry.connectionType,
+          built: true,
+          autoSeeded: true,
+        });
+      }
     } else {
       patch.buildSubPhase = undefined;
       patch.buildStage = undefined;

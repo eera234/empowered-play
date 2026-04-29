@@ -9,6 +9,7 @@ import BrandBar from "./BrandBar";
 import { SCENARIOS, ABILITIES, getThemedAbility, ROLE_COUNTS_BY_PLAYER_COUNT, MIN_PLAYERS, MAX_PLAYERS } from "../../lib/constants";
 import { SCENARIO_ILLUSTRATIONS } from "./EntryScreen";
 import AbilityBadge from "./AbilityBadge";
+import RoleDetailModal from "./RoleDetailModal";
 
 export default function FacSetupScreen() {
   const { sessionCode, sessionId, scenario, set } = useGame();
@@ -27,6 +28,7 @@ export default function FacSetupScreen() {
   const [districtAssignments, setDistrictAssignments] = useState<Record<string, string>>({});
   const [pairingsGenerated, setPairingsGenerated] = useState(false);
   const [rolesSent, setRolesSent] = useState(false);
+  const [detailAbilityId, setDetailAbilityId] = useState<string | null>(null);
 
   const nonFac = (players || []).filter((p) => !p.isFacilitator);
   // Pass #17: presence-filtered roster. Every gate ("all voted", "all seen",
@@ -696,6 +698,16 @@ export default function FacSetupScreen() {
                     <div className="fac-card-bottom">
                       <div className="fac-card-title">{a.label}</div>
                       <div className="fac-card-hr-preview">{a.assignmentHint}</div>
+                      <button
+                        type="button"
+                        className="fac-card-expand"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDetailAbilityId(baseA.id);
+                        }}
+                      >
+                        View details
+                      </button>
                     </div>
                   </div>
                 );
@@ -704,6 +716,23 @@ export default function FacSetupScreen() {
           </div>
         </div>
       )}
+
+      {detailAbilityId && (() => {
+        const baseA = ABILITIES.find((x) => x.id === detailAbilityId);
+        if (!baseA) return null;
+        const colors: Record<string, string> = {
+          mender: "#4FC3F7", scout: "#B388FF", engineer: "#FF7043",
+          anchor: "#66BB6A", diplomat: "#FFD740", citizen: "#EC407A",
+        };
+        return (
+          <RoleDetailModal
+            ability={baseA}
+            scenario={scenarioData}
+            color={colors[baseA.id] || "#B388FF"}
+            onClose={() => setDetailAbilityId(null)}
+          />
+        );
+      })()}
 
     </div>
   );

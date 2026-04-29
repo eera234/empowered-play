@@ -196,7 +196,7 @@ html,body{width:100%;min-height:100dvh;font-family:'Nunito',sans-serif;overflow-
 .fac-cards-header{margin-bottom:16px}
 .fac-cards-sub{font-size:12px;color:var(--textd);line-height:1.5;margin-top:6px}
 .fac-card-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
-@media(min-width:1200px){.fac-card-grid{grid-template-columns:repeat(4,1fr)}}
+@media(min-width:1200px){.fac-card-grid{grid-template-columns:repeat(3,1fr)}}
 @media(min-width:900px) and (max-width:1199px){.fac-card-grid{grid-template-columns:repeat(2,1fr)}}
 
 .fac-card{border-radius:var(--brick-radius);overflow:hidden;background:var(--bg2);border:2px solid var(--border);transition:all .15s cubic-bezier(.4,0,.2,1);cursor:pointer;position:relative;box-shadow:0 3px 0 rgba(0,0,0,.35)}
@@ -931,3 +931,111 @@ html,body{width:100%;min-height:100dvh;font-family:'Nunito',sans-serif;overflow-
 }
 .confetti-piece:nth-child(odd){border-radius:50%}
 .confetti-piece:nth-child(even){border-radius:1px}
+
+/* ── PRINTABLE MANUALS (A4, 2 pages) ── */
+.manual-page{min-height:100dvh;background:#13131a;padding:24px 20px 64px;color:#fff}
+.manual-doc{max-width:780px;margin:0 auto;display:flex;flex-direction:column;gap:28px}
+.manual-sheet{background:#1c1c25;border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:28px 32px;display:flex;flex-direction:column;gap:18px}
+
+/* Masthead */
+.manual-masthead{display:flex;flex-direction:column;gap:6px;padding-bottom:14px;position:relative}
+.manual-masthead::after{content:"";position:absolute;left:0;right:0;bottom:0;height:5px;background:linear-gradient(to bottom,var(--acc1) 0,var(--acc1) 1px,transparent 1px,transparent 4px,rgba(255,255,255,.35) 4px,rgba(255,255,255,.35) 4.5px)}
+.manual-eyebrow{font-family:'Black Han Sans',sans-serif;font-size:10px;letter-spacing:3px;color:var(--acc1);text-transform:uppercase}
+.manual-title{font-family:'Black Han Sans',sans-serif;font-size:30px;letter-spacing:2px;line-height:1.05;margin:2px 0 0;color:#fff}
+.manual-subtitle{font-size:12.5px;color:rgba(255,255,255,.65);line-height:1.5;margin:6px 0 0;max-width:64ch}
+.manual-stamp{font-size:10px;color:rgba(255,255,255,.4);letter-spacing:.6px;margin-top:4px}
+
+/* Two-column layout for player manual page 1 */
+.manual-cols{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+.manual-cols--player{grid-template-columns:1.4fr 1fr}
+.manual-col{display:flex;flex-direction:column;gap:14px}
+
+/* Block (replaces .manual-section) */
+.manual-block{display:flex;flex-direction:column;gap:6px;padding-left:14px;border-left:2px solid rgba(255,215,0,.35);break-inside:avoid}
+.manual-block h2{font-family:'Black Han Sans',sans-serif;font-size:13px;letter-spacing:1.6px;color:#fff;text-transform:uppercase;margin:0;display:flex;align-items:baseline;gap:8px}
+.manual-block h2 .num{font-size:10px;color:var(--acc1);letter-spacing:2px}
+.manual-block p{font-size:11.5px;line-height:1.55;color:rgba(255,255,255,.86);margin:0}
+.manual-block ul{padding-left:16px;display:flex;flex-direction:column;gap:4px;margin:2px 0 0}
+.manual-block li{font-size:11.5px;line-height:1.5;color:rgba(255,255,255,.84)}
+.manual-block strong{color:#fff}
+
+/* Side card (kit list, etc.) */
+.manual-card{border:1px solid rgba(255,255,255,.14);border-radius:4px;padding:14px 16px;display:flex;flex-direction:column;gap:8px;background:rgba(255,255,255,.02)}
+.manual-card__title{font-family:'Black Han Sans',sans-serif;font-size:11px;letter-spacing:1.6px;color:var(--acc1);text-transform:uppercase}
+.manual-card__total{font-family:'Black Han Sans',sans-serif;font-size:22px;letter-spacing:1.5px;color:#fff;line-height:1}
+.manual-card__total small{font-size:10px;color:rgba(255,255,255,.5);letter-spacing:1.2px;margin-left:6px;font-family:'Nunito',sans-serif;text-transform:uppercase}
+.manual-kit{display:flex;flex-direction:column;gap:5px;margin:4px 0 0}
+.manual-kit__row{display:grid;grid-template-columns:28px 1fr;gap:8px;align-items:baseline;font-size:10.5px;line-height:1.4}
+.manual-kit__qty{font-family:'Black Han Sans',sans-serif;color:var(--acc1);text-align:right;letter-spacing:.5px}
+.manual-kit__name{color:rgba(255,255,255,.88)}
+.manual-kit__color{display:block;font-size:9.5px;color:rgba(255,255,255,.45);margin-top:1px}
+
+/* Callout: left-bar accent */
+.manual-callout{border-left:3px solid var(--acc1);padding:8px 0 8px 12px;font-size:11.5px;line-height:1.5;color:rgba(255,255,255,.92);background:transparent}
+.manual-callout strong{color:var(--acc1);display:block;margin-bottom:2px}
+
+/* Quick-reference table */
+.manual-table{width:100%;border-collapse:collapse;font-size:10.5px;margin-top:4px}
+.manual-table th,.manual-table td{border:1px solid rgba(255,255,255,.14);padding:5px 8px;text-align:left;vertical-align:top;line-height:1.4}
+.manual-table th{background:rgba(255,255,255,.05);font-family:'Black Han Sans',sans-serif;letter-spacing:1px;font-size:9.5px;text-transform:uppercase;color:rgba(255,255,255,.7)}
+.manual-table td:first-child{font-weight:700;color:#fff;font-variant-numeric:tabular-nums}
+
+/* Page footer */
+.manual-pagefoot{margin-top:auto;padding-top:10px;border-top:1px solid rgba(255,255,255,.12);font-size:9px;letter-spacing:.6px;color:rgba(255,255,255,.42);text-transform:uppercase;display:flex;justify-content:space-between}
+
+/* Page break sentinel */
+.manual-page-break{display:block;height:0}
+
+@media print{
+  @page{size:A4;margin:14mm 15mm}
+  html,body{background:#fff !important;color:#000 !important}
+  .manual-page{background:#fff !important;color:#000 !important;padding:0 !important;min-height:0}
+  .manual-doc{max-width:none;gap:0}
+  .manual-sheet{background:#fff !important;border:none !important;border-radius:0 !important;padding:0 !important;page-break-inside:avoid;break-inside:avoid;display:block;height:auto}
+  .manual-page-break{page-break-after:always;break-after:page}
+
+  /* Masthead in print */
+  .manual-masthead{padding-bottom:8mm;margin-bottom:6mm}
+  .manual-masthead::after{background:linear-gradient(to bottom,#caa400 0,#caa400 1px,transparent 1px,transparent 4px,#222 4px,#222 4.5px)}
+  .manual-eyebrow{color:#a07f00}
+  .manual-title{color:#111;font-size:24pt}
+  .manual-subtitle{color:#333;font-size:9.5pt;line-height:1.4}
+  .manual-stamp{color:#666;font-size:8pt}
+
+  /* Layout */
+  .manual-cols{display:grid;grid-template-columns:1fr 1fr;gap:8mm;margin-bottom:6mm}
+  .manual-cols--player{grid-template-columns:1.45fr 1fr}
+  .manual-col{display:flex;flex-direction:column;gap:5mm}
+
+  /* Blocks */
+  .manual-block{border-left:2px solid #caa400;padding-left:3mm;margin-bottom:3.5mm;break-inside:avoid;page-break-inside:avoid}
+  .manual-block h2{color:#111;font-size:10.5pt;letter-spacing:1.2px;margin-bottom:1mm}
+  .manual-block h2 .num{color:#a07f00;font-size:8pt}
+  .manual-block p{color:#111;font-size:9.5pt;line-height:1.4;margin:0 0 1mm}
+  .manual-block li{color:#111;font-size:9.5pt;line-height:1.35}
+  .manual-block strong{color:#000}
+
+  /* Side card */
+  .manual-card{border:1px solid #888;background:#fff;padding:3mm 4mm;border-radius:0}
+  .manual-card__title{color:#a07f00;font-size:8.5pt}
+  .manual-card__total{color:#111;font-size:18pt}
+  .manual-card__total small{color:#666;font-size:7.5pt}
+  .manual-kit__qty{color:#a07f00}
+  .manual-kit__name{color:#111}
+  .manual-kit__color{color:#666}
+  .manual-kit__row{font-size:8.5pt;line-height:1.3}
+
+  /* Callout */
+  .manual-callout{border-left:2px solid #caa400;color:#111;font-size:9.5pt;padding:1mm 0 1mm 3mm}
+  .manual-callout strong{color:#a07f00}
+
+  /* Table */
+  .manual-table{font-size:8.5pt;page-break-inside:avoid;break-inside:avoid}
+  .manual-table th,.manual-table td{border:0.5pt solid #888;color:#111;padding:1.5mm 2.5mm;line-height:1.3}
+  .manual-table th{background:#eee;color:#222;font-size:8pt}
+  .manual-table tr:nth-child(even) td{background:#f7f7f7}
+  .manual-table td:first-child{color:#000}
+
+  /* Footer */
+  .manual-pagefoot{color:#666;border-top:0.5pt solid #888;font-size:7.5pt;margin-top:6mm;padding-top:2mm}
+}
